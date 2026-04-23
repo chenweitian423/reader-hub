@@ -1001,60 +1001,64 @@ button:disabled {
 
 .source-status {
   display: grid;
-  gap: 14px;
-}
-
-.source-status-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
-.source-summary-card {
-  border-radius: 18px;
-  padding: 16px;
-  display: grid;
-  gap: 6px;
-  border: 1px solid rgba(79, 60, 35, 0.12);
+.source-status-shell {
+  border-radius: 22px;
+  padding: 14px 16px;
+  border: 1px solid rgba(79, 60, 35, 0.1);
   background:
-    radial-gradient(circle at top right, rgba(194, 91, 47, 0.1), transparent 42%),
-    rgba(255, 255, 255, 0.82);
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.1), transparent 36%),
+    rgba(255, 255, 255, 0.78);
+  display: grid;
+  gap: 10px;
 }
 
-.source-summary-card span,
-.source-summary-card small {
+.source-status-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.source-status-headline strong {
+  font-size: 18px;
+}
+
+.source-status-headline span {
   color: var(--muted);
+  font-size: 14px;
 }
 
-.source-summary-card span {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+.source-status-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.source-summary-card strong {
-  font-size: 28px;
+.source-stat-pill {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(84, 59, 29, 0.08);
+  color: var(--ink);
+  font-size: 13px;
   line-height: 1;
 }
 
-.source-summary-card.success {
-  border-color: rgba(39, 103, 73, 0.18);
-  background:
-    radial-gradient(circle at top right, rgba(39, 103, 73, 0.12), transparent 40%),
-    rgba(244, 255, 248, 0.88);
+.source-stat-pill.success {
+  background: rgba(39, 103, 73, 0.14);
+  color: var(--success);
 }
 
-.source-summary-card.warning {
-  border-color: rgba(156, 66, 33, 0.18);
-  background:
-    radial-gradient(circle at top right, rgba(156, 66, 33, 0.12), transparent 40%),
-    rgba(255, 248, 243, 0.88);
+.source-stat-pill.warning {
+  background: rgba(156, 66, 33, 0.12);
+  color: var(--warning);
 }
 
-.source-summary-card.muted-card {
-  background:
-    radial-gradient(circle at top right, rgba(84, 59, 29, 0.08), transparent 40%),
-    rgba(250, 247, 242, 0.88);
+.source-stat-pill.muted-pill {
+  color: var(--muted);
 }
 
 .source-status-list {
@@ -1062,21 +1066,68 @@ button:disabled {
   gap: 10px;
 }
 
+.source-hit-strip {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.source-hit-strip-label,
+.source-hit-more {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.source-hit-chip,
+.source-zero-chip {
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px solid rgba(89, 62, 32, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.source-hit-chip {
+  cursor: pointer;
+}
+
+.source-hit-chip:hover {
+  border-color: rgba(194, 91, 47, 0.22);
+  background: rgba(255, 248, 240, 0.96);
+}
+
 .source-status-collapse {
   border: 1px dashed rgba(89, 62, 32, 0.2);
   border-radius: 18px;
-  padding: 14px 16px;
-  background: rgba(255, 251, 245, 0.72);
+  padding: 12px 14px;
+  background: rgba(255, 251, 245, 0.62);
+}
+
+.source-status-collapse.subtle {
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .source-status-collapse summary {
   cursor: pointer;
   color: var(--muted);
   font-weight: 600;
+  list-style: none;
+}
+
+.source-status-collapse summary::-webkit-details-marker {
+  display: none;
 }
 
 .source-status-collapse[open] summary {
   margin-bottom: 12px;
+}
+
+.source-status-chip-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .source-status-item {
@@ -1594,10 +1645,6 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .source-status-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .result-detail-panel {
     position: static;
   }
@@ -1731,7 +1778,8 @@ button:disabled {
     flex-wrap: wrap;
   }
 
-  .source-status-summary-grid {
-    grid-template-columns: 1fr;
+  .source-status-headline {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

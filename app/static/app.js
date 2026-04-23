@@ -1040,7 +1040,7 @@ function renderShelf() {
 function renderSourceStatus(items = []) {
   if (!items.length) {
     elements.sourceStatusSummary.textContent = state.sources.length
-      ? "书源已经准备好。搜索后这里只展示本次命中、失败和零命中的摘要，不再把所有来源都挤在首页。"
+      ? `已连接 ${state.sources.length} 个书源。搜索后这里只保留关键摘要，详细来源信息会折叠起来。`
       : "导入书源后即可搜索。";
     elements.sourceStatus.className = "source-status muted";
     elements.sourceStatus.textContent = state.sources.length
@@ -1053,12 +1053,12 @@ function renderSourceStatus(items = []) {
   const zeroHitItems = items.filter((item) => item.success && item.count === 0);
   const failedItems = items.filter((item) => !item.success);
   const totalHits = hitItems.reduce((total, item) => total + item.count, 0);
+  const topHitItems = [...hitItems].sort((left, right) => right.count - left.count).slice(0, 6);
 
   elements.sourceStatusSummary.textContent = [
     `本次共检查 ${items.length} 个书源`,
-    hitItems.length ? `${hitItems.length} 个来源有结果` : "暂无来源命中",
-    zeroHitItems.length ? `${zeroHitItems.length} 个来源命中 0 本` : "",
-    failedItems.length ? `${failedItems.length} 个来源返回错误` : "",
+    hitItems.length ? `${hitItems.length} 个来源搜到结果` : "暂无来源命中",
+    failedItems.length ? `${failedItems.length} 个来源报错` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -1066,62 +1066,83 @@ function renderSourceStatus(items = []) {
   elements.sourceStatus.className = "source-status";
   elements.sourceStatus.innerHTML = "";
 
-  const summary = document.createElement("div");
-  summary.className = "source-status-summary-grid";
-  summary.innerHTML = `
-    <article class="source-summary-card success">
-      <span>总命中</span>
-      <strong>${totalHits}</strong>
-      <small>${hitItems.length ? "来自命中的书源" : "这次还没有搜到书"}</small>
-    </article>
-    <article class="source-summary-card">
-      <span>命中来源</span>
-      <strong>${hitItems.length}</strong>
-      <small>${items.length} 个书源里有结果的数量</small>
-    </article>
-    <article class="source-summary-card ${zeroHitItems.length ? "muted-card" : ""}">
-      <span>命中 0 本</span>
-      <strong>${zeroHitItems.length}</strong>
-      <small>${zeroHitItems.length ? "已折叠到下方，避免抢占首页" : "没有零命中的来源"}</small>
-    </article>
-    <article class="source-summary-card ${failedItems.length ? "warning" : ""}">
-      <span>失败来源</span>
-      <strong>${failedItems.length}</strong>
-      <small>${failedItems.length ? "建议优先检查这些书源规则" : "本次没有来源报错"}</small>
-    </article>
+  const shell = document.createElement("section");
+  shell.className = "source-status-shell";
+  shell.innerHTML = `
+    <div class="source-status-headline">
+      <strong>${totalHits ? `这次一共搜到 ${totalHits} 本书` : "这次还没有搜到书"}</strong>
+      <span>${failedItems.length ? "部分来源异常" : hitItems.length ? "结果已就绪" : "可以换个关键词再试试"}</span>
+    </div>
+    <div class="source-status-pills">
+      <span class="source-stat-pill success">命中 ${hitItems.length}</span>
+      <span class="source-stat-pill">${totalHits} 本结果</span>
+      <span class="source-stat-pill ${failedItems.length ? "warning" : ""}">失败 ${failedItems.length}</span>
+      <span class="source-stat-pill muted-pill">零命中 ${zeroHitItems.length}</span>
+    </div>
   `;
-  elements.sourceStatus.appendChild(summary);
+  elements.sourceStatus.appendChild(shell);
 
-  const visibleItems = [...hitItems, ...failedItems];
-  if (visibleItems.length) {
+  if (topHitItems.length) {
+    const hitStrip = document.createElement("div");
+    hitStrip.className = "source-hit-strip";
+    const label = document.createElement("span");
+    label.className = "source-hit-strip-label";
+    label.textContent = "命中来源";
+    hitStrip.appendChild(label);
+
+    topHitItems.forEach((item) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "source-hit-chip";
+      chip.textContent = `${item.source_name} · ${item.count}`;
+      chip.addEventListener("click", () => {
+        state.filters.sourceId = String(item.source_id);
+        elements.sourceFilter.value = state.filters.sourceId;
+        renderResults();
+      });
+      hitStrip.appendChild(chip);
+    });
+
+    if (hitItems.length > topHitItems.length) {
+      const more = document.createElement("span");
+      more.className = "source-hit-more";
+      more.textContent = `另有 ${hitItems.length - topHitItems.length} 个来源有结果`;
+      hitStrip.appendChild(more);
+    }
+
+    elements.sourceStatus.appendChild(hitStrip);
+  }
+
+  if (failedItems.length) {
+    const collapse = document.createElement("details");
+    collapse.className = "source-status-collapse";
+    collapse.innerHTML = `<summary>查看 ${failedItems.length} 个异常来源</summary>`;
     const list = document.createElement("div");
     list.className = "source-status-list";
-    visibleItems.forEach((item) => {
+    failedItems.forEach((item) => {
       const div = document.createElement("div");
-      div.className = `source-status-item ${item.success ? "success" : "failed"}`.trim();
+      div.className = "source-status-item failed";
       div.innerHTML = `
         <span class="source-status-name">${item.source_name}</span>
-        <span class="source-status-detail">${item.success ? `命中 ${item.count} 本` : item.error}</span>
+        <span class="source-status-detail">${item.error}</span>
       `;
       list.appendChild(div);
     });
-    elements.sourceStatus.appendChild(list);
+    collapse.appendChild(list);
+    elements.sourceStatus.appendChild(collapse);
   }
 
   if (zeroHitItems.length) {
     const collapse = document.createElement("details");
-    collapse.className = "source-status-collapse";
-    collapse.innerHTML = `<summary>查看 ${zeroHitItems.length} 个命中 0 本的书源</summary>`;
+    collapse.className = "source-status-collapse subtle";
+    collapse.innerHTML = `<summary>查看 ${zeroHitItems.length} 个零命中来源</summary>`;
     const list = document.createElement("div");
-    list.className = "source-status-list compact";
+    list.className = "source-status-chip-list";
     zeroHitItems.forEach((item) => {
-      const div = document.createElement("div");
-      div.className = "source-status-item neutral";
-      div.innerHTML = `
-        <span class="source-status-name">${item.source_name}</span>
-        <span class="source-status-detail">本次搜索没有命中结果</span>
-      `;
-      list.appendChild(div);
+      const chip = document.createElement("span");
+      chip.className = "source-zero-chip";
+      chip.textContent = item.source_name;
+      list.appendChild(chip);
     });
     collapse.appendChild(list);
     elements.sourceStatus.appendChild(collapse);
