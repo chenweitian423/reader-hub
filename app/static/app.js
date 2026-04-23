@@ -5,9 +5,11 @@ const state = {
   },
   ui: {
     activePage: "search",
+    lastBrowsePage: "search",
     selectedResultKey: null,
     recentSearches: [],
     readerFocusMode: false,
+    readerSidebarCollapsed: false,
   },
   sources: [],
   sampleJson: null,
@@ -62,6 +64,7 @@ const elements = {
   shelfSearchInput: document.querySelector("#shelf-search-input"),
   shelfCategoryFilter: document.querySelector("#shelf-category-filter"),
   searchForm: document.querySelector("#search-form"),
+  pageShell: document.querySelector("#page-shell"),
   keywordInput: document.querySelector("#keyword-input"),
   results: document.querySelector("#results"),
   resultCount: document.querySelector("#result-count"),
@@ -80,6 +83,7 @@ const elements = {
   capabilityFilter: document.querySelector("#capability-filter"),
   shelfFilter: document.querySelector("#shelf-filter"),
   readerSection: document.querySelector("#reader-section"),
+  readerShell: document.querySelector("#reader-shell"),
   readerSourceName: document.querySelector("#reader-source-name"),
   readerBookTitle: document.querySelector("#reader-book-title"),
   readerBookAuthor: document.querySelector("#reader-book-author"),
@@ -96,7 +100,12 @@ const elements = {
   saveBookMetaBtn: document.querySelector("#save-book-meta-btn"),
   prevChapterBtn: document.querySelector("#prev-chapter-btn"),
   nextChapterBtn: document.querySelector("#next-chapter-btn"),
+  readerSidebarBtn: document.querySelector("#reader-sidebar-btn"),
   readerFocusBtn: document.querySelector("#reader-focus-btn"),
+  readerBackBtn: document.querySelector("#reader-back-btn"),
+  readerShelfBtn: document.querySelector("#reader-shelf-btn"),
+  readerPageTitle: document.querySelector("#reader-page-title"),
+  readerPageMeta: document.querySelector("#reader-page-meta"),
   toggleShelfBtn: document.querySelector("#toggle-shelf-btn"),
   cacheBookBtn: document.querySelector("#cache-book-btn"),
   clearCacheBtn: document.querySelector("#clear-cache-btn"),
@@ -307,6 +316,12 @@ function setReaderFocusMode(enabled) {
   elements.readerFocusBtn.textContent = state.ui.readerFocusMode ? "退出沉浸" : "沉浸模式";
 }
 
+function setReaderSidebarCollapsed(enabled) {
+  state.ui.readerSidebarCollapsed = Boolean(enabled);
+  elements.readerShell.classList.toggle("sidebar-collapsed", state.ui.readerSidebarCollapsed);
+  elements.readerSidebarBtn.textContent = state.ui.readerSidebarCollapsed ? "展开侧栏" : "收起侧栏";
+}
+
 function updatePrefetchTaskUI() {
   const task = state.prefetchTask;
   if (!task) {
@@ -400,7 +415,8 @@ function bindHomeSpotlightButtons(payload) {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
     elements.homeSpotlightSecondary.textContent = "查看书架";
     elements.homeSpotlightPrimary.addEventListener("click", () => {
-      elements.readerSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActivePage("reader");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
     elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
     return;
@@ -751,12 +767,16 @@ function renderAppMeta() {
 
 function setActivePage(pageId) {
   state.ui.activePage = pageId;
+  if (pageId !== "reader") {
+    state.ui.lastBrowsePage = pageId;
+  }
   elements.menuButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.page === pageId);
   });
   elements.pagePanels.forEach((panel) => {
     panel.classList.toggle("hidden", panel.id !== `page-${pageId}`);
   });
+  elements.pageShell.classList.toggle("reader-page-active", pageId === "reader");
 }
 
 async function apiFetch(url, options = {}) {
@@ -798,6 +818,9 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
   state.cachedChapters = [];
   state.prefetchTask = null;
   elements.readerSection.classList.add("hidden");
+  elements.readerPageTitle.textContent = "打开一本书，进入更大的阅读界面";
+  elements.readerPageMeta.textContent = "阅读器已经从搜书页拆出来，正文、目录和设置都会在这里独立展示。";
+  setReaderSidebarCollapsed(false);
   setReaderFocusMode(false);
   elements.chapterCount.textContent = "0";
   elements.chapterList.className = "chapter-list empty";
@@ -1098,8 +1121,12 @@ function renderReaderShell(bookOpenPayload) {
   state.reader.chapters = chapters;
   state.reader.activeChapterIndex = -1;
 
+  setActivePage("reader");
   elements.readerSection.classList.remove("hidden");
+  setReaderSidebarCollapsed(false);
   setReaderFocusMode(false);
+  elements.readerPageTitle.textContent = book.title || "未命名书籍";
+  elements.readerPageMeta.textContent = `${sourceName}${book.author ? ` · ${book.author}` : ""}${book.latest_chapter ? ` · 最新 ${book.latest_chapter}` : ""}`;
   elements.readerSourceName.textContent = sourceName;
   elements.readerBookTitle.textContent = book.title || "未命名书籍";
   elements.readerBookAuthor.textContent = book.author ? `作者: ${book.author}` : "作者信息缺失";
@@ -1542,7 +1569,6 @@ async function openBook(book, options = {}) {
 }
 
 async function continueShelfBook(shelfBook) {
-  setActivePage("search");
   await openBook(shelfBook.book, {
     resumeChapter: shelfBook.last_chapter,
     resumeChapterIndex: shelfBook.last_chapter_index,
@@ -1743,12 +1769,23 @@ elements.nextChapterBtn.addEventListener("click", () => {
     readChapter(state.reader.activeChapterIndex + 1);
   }
 });
+elements.readerSidebarBtn.addEventListener("click", () => {
+  setReaderSidebarCollapsed(!state.ui.readerSidebarCollapsed);
+});
 elements.readerFocusBtn.addEventListener("click", () => {
   if (!state.reader.book) {
     setStatus("请先打开一本书再进入沉浸模式", "error");
     return;
   }
   setReaderFocusMode(!state.ui.readerFocusMode);
+});
+elements.readerBackBtn.addEventListener("click", () => {
+  setActivePage(state.ui.lastBrowsePage || "search");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+elements.readerShelfBtn.addEventListener("click", () => {
+  setActivePage("shelf");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 });
 elements.toggleShelfBtn.addEventListener("click", () => {
   const book = currentReaderBook();
