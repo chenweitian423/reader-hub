@@ -361,6 +361,7 @@
                     <h2 id="reader-chapter-title">请选择章节</h2>
                   </div>
                   <div class="reader-nav">
+                    <button id="reader-drawer-btn" class="ghost-btn" type="button">目录抽屉</button>
                     <button id="reader-sidebar-btn" class="ghost-btn" type="button">收起侧栏</button>
                     <button id="reader-focus-btn" class="ghost-btn" type="button">沉浸模式</button>
                     <button id="toggle-shelf-btn" class="ghost-btn" type="button">加入书架</button>
@@ -396,8 +397,29 @@
                 <article id="reader-content" class="reader-content empty">
                   正文区域已准备好。
                 </article>
+                <div class="reader-bottom-pager">
+                  <button id="reader-bottom-prev-btn" class="ghost-btn" type="button">上一章</button>
+                  <div class="reader-bottom-meta">
+                    <strong id="reader-bottom-title">未开始阅读</strong>
+                    <span id="reader-bottom-progress" class="muted">第 0 / 0 章</span>
+                  </div>
+                  <button id="reader-bottom-next-btn" class="ghost-btn" type="button">下一章</button>
+                </div>
               </div>
             </div>
+            <div id="reader-drawer-overlay" class="reader-drawer-overlay hidden"></div>
+            <aside id="reader-drawer" class="reader-drawer hidden">
+              <div class="reader-drawer-head">
+                <div>
+                  <p class="eyebrow">目录抽屉</p>
+                  <h3 id="reader-drawer-title">章节目录</h3>
+                </div>
+                <button id="reader-drawer-close-btn" class="ghost-btn" type="button">关闭</button>
+              </div>
+              <div id="reader-drawer-list" class="chapter-list empty">
+                打开支持阅读的书籍后，章节会显示在这里。
+              </div>
+            </aside>
           </section>
         </section>
 

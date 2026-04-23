@@ -10,6 +10,8 @@ const state = {
     recentSearches: [],
     readerFocusMode: false,
     readerSidebarCollapsed: false,
+    readerDrawerOpen: false,
+    readerToolbarHidden: false,
   },
   sources: [],
   sampleJson: null,
@@ -50,6 +52,7 @@ const state = {
 
 let preferenceSaveTimer = null;
 let prefetchPollTimer = null;
+let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
 
 const elements = {
@@ -92,6 +95,7 @@ const elements = {
   readerBookCover: document.querySelector("#reader-book-cover"),
   chapterCount: document.querySelector("#chapter-count"),
   chapterList: document.querySelector("#chapter-list"),
+  readerDrawerList: document.querySelector("#reader-drawer-list"),
   readerChapterTitle: document.querySelector("#reader-chapter-title"),
   readerStatus: document.querySelector("#reader-status"),
   readerContent: document.querySelector("#reader-content"),
@@ -100,12 +104,21 @@ const elements = {
   saveBookMetaBtn: document.querySelector("#save-book-meta-btn"),
   prevChapterBtn: document.querySelector("#prev-chapter-btn"),
   nextChapterBtn: document.querySelector("#next-chapter-btn"),
+  readerDrawerBtn: document.querySelector("#reader-drawer-btn"),
+  readerDrawer: document.querySelector("#reader-drawer"),
+  readerDrawerOverlay: document.querySelector("#reader-drawer-overlay"),
+  readerDrawerCloseBtn: document.querySelector("#reader-drawer-close-btn"),
+  readerDrawerTitle: document.querySelector("#reader-drawer-title"),
   readerSidebarBtn: document.querySelector("#reader-sidebar-btn"),
   readerFocusBtn: document.querySelector("#reader-focus-btn"),
   readerBackBtn: document.querySelector("#reader-back-btn"),
   readerShelfBtn: document.querySelector("#reader-shelf-btn"),
   readerPageTitle: document.querySelector("#reader-page-title"),
   readerPageMeta: document.querySelector("#reader-page-meta"),
+  readerBottomPrevBtn: document.querySelector("#reader-bottom-prev-btn"),
+  readerBottomNextBtn: document.querySelector("#reader-bottom-next-btn"),
+  readerBottomTitle: document.querySelector("#reader-bottom-title"),
+  readerBottomProgress: document.querySelector("#reader-bottom-progress"),
   toggleShelfBtn: document.querySelector("#toggle-shelf-btn"),
   cacheBookBtn: document.querySelector("#cache-book-btn"),
   clearCacheBtn: document.querySelector("#clear-cache-btn"),
@@ -308,18 +321,36 @@ function updateReaderProgressUI() {
     current > 0 ? `已读到第 ${current} / ${total} 章` : `共 ${total} 章，选择章节开始阅读`;
   elements.readerProgressBadge.textContent = `${percent}%`;
   elements.readerProgressBar.style.width = `${percent}%`;
+  elements.readerBottomTitle.textContent =
+    active >= 0 ? state.reader.chapters[active]?.title || "当前章节" : "选择章节开始阅读";
+  elements.readerBottomProgress.textContent = `第 ${Math.max(current, 0)} / ${total} 章`;
 }
 
 function setReaderFocusMode(enabled) {
   state.ui.readerFocusMode = Boolean(enabled);
   elements.readerSection.classList.toggle("focus-mode", state.ui.readerFocusMode);
   elements.readerFocusBtn.textContent = state.ui.readerFocusMode ? "退出沉浸" : "沉浸模式";
+  if (state.ui.readerFocusMode) {
+    setReaderDrawerOpen(false);
+  }
 }
 
 function setReaderSidebarCollapsed(enabled) {
   state.ui.readerSidebarCollapsed = Boolean(enabled);
   elements.readerShell.classList.toggle("sidebar-collapsed", state.ui.readerSidebarCollapsed);
   elements.readerSidebarBtn.textContent = state.ui.readerSidebarCollapsed ? "展开侧栏" : "收起侧栏";
+}
+
+function setReaderDrawerOpen(enabled) {
+  state.ui.readerDrawerOpen = Boolean(enabled);
+  elements.readerDrawer.classList.toggle("hidden", !state.ui.readerDrawerOpen);
+  elements.readerDrawerOverlay.classList.toggle("hidden", !state.ui.readerDrawerOpen);
+  elements.readerDrawerBtn.textContent = state.ui.readerDrawerOpen ? "关闭目录" : "目录抽屉";
+}
+
+function setReaderToolbarHidden(enabled) {
+  state.ui.readerToolbarHidden = Boolean(enabled);
+  elements.pageShell.classList.toggle("reader-toolbar-hidden", state.ui.readerToolbarHidden);
 }
 
 function updatePrefetchTaskUI() {
@@ -769,6 +800,8 @@ function setActivePage(pageId) {
   state.ui.activePage = pageId;
   if (pageId !== "reader") {
     state.ui.lastBrowsePage = pageId;
+    setReaderToolbarHidden(false);
+    setReaderDrawerOpen(false);
   }
   elements.menuButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.page === pageId);
@@ -821,10 +854,15 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
   elements.readerPageTitle.textContent = "打开一本书，进入更大的阅读界面";
   elements.readerPageMeta.textContent = "阅读器已经从搜书页拆出来，正文、目录和设置都会在这里独立展示。";
   setReaderSidebarCollapsed(false);
+  setReaderDrawerOpen(false);
+  setReaderToolbarHidden(false);
   setReaderFocusMode(false);
   elements.chapterCount.textContent = "0";
   elements.chapterList.className = "chapter-list empty";
   elements.chapterList.textContent = "打开支持阅读的书籍后，章节会显示在这里。";
+  elements.readerDrawerList.className = "chapter-list empty";
+  elements.readerDrawerList.textContent = "打开支持阅读的书籍后，章节会显示在这里。";
+  elements.readerDrawerTitle.textContent = "章节目录";
   elements.readerChapterTitle.textContent = "请选择章节";
   elements.readerStatus.textContent = message;
   elements.readerContent.className = "reader-content empty";
@@ -1124,9 +1162,12 @@ function renderReaderShell(bookOpenPayload) {
   setActivePage("reader");
   elements.readerSection.classList.remove("hidden");
   setReaderSidebarCollapsed(false);
+  setReaderDrawerOpen(false);
+  setReaderToolbarHidden(false);
   setReaderFocusMode(false);
   elements.readerPageTitle.textContent = book.title || "未命名书籍";
   elements.readerPageMeta.textContent = `${sourceName}${book.author ? ` · ${book.author}` : ""}${book.latest_chapter ? ` · 最新 ${book.latest_chapter}` : ""}`;
+  elements.readerDrawerTitle.textContent = book.title || "章节目录";
   elements.readerSourceName.textContent = sourceName;
   elements.readerBookTitle.textContent = book.title || "未命名书籍";
   elements.readerBookAuthor.textContent = book.author ? `作者: ${book.author}` : "作者信息缺失";
@@ -1157,16 +1198,16 @@ function renderReaderShell(bookOpenPayload) {
   elements.readerContent.textContent = "请选择左侧章节。";
 }
 
-function renderChapterList() {
+function renderChapterListInto(target) {
   const chapters = state.reader.chapters;
   if (!chapters.length) {
-    elements.chapterList.className = "chapter-list empty";
-    elements.chapterList.textContent = "当前书籍没有章节。";
+    target.className = "chapter-list empty";
+    target.textContent = "当前书籍没有章节。";
     return;
   }
 
-  elements.chapterList.className = "chapter-list";
-  elements.chapterList.innerHTML = "";
+  target.className = "chapter-list";
+  target.innerHTML = "";
 
   chapters.forEach((chapter, index) => {
     const fragment = elements.chapterItemTemplate.content.cloneNode(true);
@@ -1178,16 +1219,26 @@ function renderChapterList() {
     number.textContent = String(index + 1).padStart(2, "0");
     title.textContent = `${chapter.title || `第 ${index + 1} 章`}${isCached ? " · 已缓存" : ""}`;
     button.classList.toggle("active", index === state.reader.activeChapterIndex);
-    button.addEventListener("click", () => readChapter(index));
+    button.addEventListener("click", () => {
+      readChapter(index);
+      setReaderDrawerOpen(false);
+    });
 
-    elements.chapterList.appendChild(fragment);
+    target.appendChild(fragment);
   });
+}
+
+function renderChapterList() {
+  renderChapterListInto(elements.chapterList);
+  renderChapterListInto(elements.readerDrawerList);
 }
 
 function updateReaderNav() {
   const { activeChapterIndex, chapters } = state.reader;
   elements.prevChapterBtn.disabled = activeChapterIndex <= 0;
   elements.nextChapterBtn.disabled = activeChapterIndex < 0 || activeChapterIndex >= chapters.length - 1;
+  elements.readerBottomPrevBtn.disabled = elements.prevChapterBtn.disabled;
+  elements.readerBottomNextBtn.disabled = elements.nextChapterBtn.disabled;
   updateReaderProgressUI();
 }
 
@@ -1551,7 +1602,7 @@ async function openBook(book, options = {}) {
     }
     updateReaderNav();
     setStatus(`已打开《${payload.book.title}》`, "success");
-    elements.readerSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
 
     const resumeIndex = resolveResumeChapterIndex(
       payload.chapters,
@@ -1623,6 +1674,7 @@ async function readChapter(index) {
       : `正在阅读 ${payload.chapter_title || chapter.title} · 已写入缓存`;
     elements.readerContent.className = "reader-content";
     elements.readerContent.textContent = payload.content;
+    setReaderToolbarHidden(false);
     setStatus(payload.cached ? "正文已从缓存加载" : "正文加载完成并已缓存", "success");
     await refreshCurrentBookCache(state.reader.book.book_key);
     await saveProgress(payload.chapter, index);
@@ -1769,6 +1821,29 @@ elements.nextChapterBtn.addEventListener("click", () => {
     readChapter(state.reader.activeChapterIndex + 1);
   }
 });
+elements.readerBottomPrevBtn.addEventListener("click", () => {
+  if (state.reader.activeChapterIndex > 0) {
+    readChapter(state.reader.activeChapterIndex - 1);
+  }
+});
+elements.readerBottomNextBtn.addEventListener("click", () => {
+  if (state.reader.activeChapterIndex < state.reader.chapters.length - 1) {
+    readChapter(state.reader.activeChapterIndex + 1);
+  }
+});
+elements.readerDrawerBtn.addEventListener("click", () => {
+  if (!state.reader.book) {
+    setStatus("请先打开一本书再查看目录", "error");
+    return;
+  }
+  setReaderDrawerOpen(!state.ui.readerDrawerOpen);
+});
+elements.readerDrawerCloseBtn.addEventListener("click", () => {
+  setReaderDrawerOpen(false);
+});
+elements.readerDrawerOverlay.addEventListener("click", () => {
+  setReaderDrawerOpen(false);
+});
 elements.readerSidebarBtn.addEventListener("click", () => {
   setReaderSidebarCollapsed(!state.ui.readerSidebarCollapsed);
 });
@@ -1826,6 +1901,24 @@ elements.keywordChips.forEach((button) => {
     runQuickSearch(button.dataset.keyword || "");
   });
 });
+window.addEventListener(
+  "scroll",
+  () => {
+    if (state.ui.activePage !== "reader" || !state.reader.book || state.ui.readerDrawerOpen) {
+      previousWindowScrollY = window.scrollY;
+      return;
+    }
+    const currentY = window.scrollY;
+    const delta = currentY - previousWindowScrollY;
+    if (currentY < 120 || delta < -10) {
+      setReaderToolbarHidden(false);
+    } else if (delta > 12) {
+      setReaderToolbarHidden(true);
+    }
+    previousWindowScrollY = currentY;
+  },
+  { passive: true },
+);
 
 Promise.all([refreshAppMeta(), refreshSources(), refreshShelf(), refreshPreferences()])
   .then(() => {
