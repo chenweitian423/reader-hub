@@ -11,13 +11,13 @@ chenxiaotian423/reader-hub:latest
 当前发布版本：
 
 ```text
-1.12.1
+1.12.2
 ```
 
 每次迭代发布后，镜像会同时生成这些标签：
 
 - `latest`
-- `1.12.1`
+- `1.12.2`
 - `1.12`
 - `sha-<commit>`
 
@@ -65,7 +65,7 @@ http://localhost:8000
 
 - 默认值：`latest`
 - 作用：指定要部署的 Docker 镜像版本
-- 例子：`1.12.1`
+- 例子：`1.12.2`
 
 ### `READER_HUB_DATABASE_URL`
 

@@ -910,9 +910,18 @@ function renderSources() {
     const enabledTag = fragment.querySelector(".source-enabled");
     const toggleBtn = fragment.querySelector(".toggle-btn");
     const deleteBtn = fragment.querySelector(".delete-btn");
+    const config = source.config || {};
+    const summaryParts = [];
+    if (config.legacy) {
+      summaryParts.push("旧格式兼容");
+    }
+    summaryParts.push(config.chapters && config.content ? "支持阅读" : "仅搜索");
 
     name.textContent = source.name;
-    description.textContent = source.description || "未填写说明";
+    description.textContent = [source.description || "未填写说明", summaryParts.join(" · ")]
+      .filter(Boolean)
+      .join(" · ");
+    description.title = description.textContent;
     enabledTag.textContent = source.enabled ? "已启用" : "已停用";
     enabledTag.className = `source-enabled ${source.enabled ? "enabled" : "disabled"}`;
     toggleBtn.textContent = source.enabled ? "停用" : "启用";
@@ -1027,7 +1036,9 @@ function renderShelf() {
 function renderSourceStatus(items = []) {
   if (!items.length) {
     elements.sourceStatus.className = "source-status muted";
-    elements.sourceStatus.textContent = "导入书源后即可搜索。";
+    elements.sourceStatus.textContent = state.sources.length
+      ? "书源已准备好，输入关键词开始搜索。"
+      : "导入书源后即可搜索。";
     return;
   }
 
@@ -1038,8 +1049,8 @@ function renderSourceStatus(items = []) {
     const div = document.createElement("div");
     div.className = `source-status-item ${item.success ? "" : "failed"}`.trim();
     div.innerHTML = `
-      <span>${item.source_name}</span>
-      <span>${item.success ? `命中 ${item.count} 本` : item.error}</span>
+      <span class="source-status-name">${item.source_name}</span>
+      <span class="source-status-detail">${item.success ? `命中 ${item.count} 本` : item.error}</span>
     `;
     elements.sourceStatus.appendChild(div);
   });
@@ -1077,7 +1088,9 @@ function renderResults(items = state.results) {
     elements.results.className = "results empty";
     elements.results.textContent = state.results.length
       ? "当前筛选条件下没有结果，换个过滤条件试试。"
-      : "没有搜索到结果，换个关键词或调整书源试试。";
+      : state.sources.length
+        ? "还没有搜索结果，输入关键词开始搜索；如果某个来源失败，搜索状态里会显示具体原因。"
+        : "还没有结果，先到“书源管理”导入书源，再回来搜索。";
     renderHomeSpotlight();
     renderHomeRails();
     renderResultDetail(null);
@@ -1385,7 +1398,10 @@ async function importSources() {
       body: raw,
     });
     await refreshSources();
-    setStatus("书源导入成功", "success");
+    setActivePage("search");
+    renderSourceStatus([]);
+    setStatus("书源导入成功，已经可以开始搜索", "success");
+    elements.keywordInput.focus();
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -1516,7 +1532,19 @@ async function searchBooks(event) {
     rememberRecentSearch(keyword);
     renderResults(payload.items);
     renderSourceStatus(payload.sources);
-    setStatus(`搜索完成，共 ${payload.total} 本`, "success");
+    const failedCount = payload.sources.filter((item) => !item.success).length;
+    if (payload.total > 0) {
+      setStatus(
+        failedCount
+          ? `搜索完成，共 ${payload.total} 本，另有 ${failedCount} 个来源失败`
+          : `搜索完成，共 ${payload.total} 本`,
+        failedCount ? "idle" : "success",
+      );
+    } else if (failedCount === payload.sources.length) {
+      setStatus(`没有搜到结果，且 ${failedCount} 个来源都返回了错误`, "error");
+    } else {
+      setStatus("搜索完成，但暂时没有命中结果", "idle");
+    }
   } catch (error) {
     renderSourceStatus([]);
     setStatus(error.message, "error");
