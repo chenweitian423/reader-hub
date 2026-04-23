@@ -1,6 +1,6 @@
 services:
   reader-hub:
-    image: chenxiaotian423/reader-hub:latest
+    image: chenxiaotian423/reader-hub:${READER_HUB_IMAGE_TAG:-latest}
     container_name: reader-hub
     ports:
       - "8000:8000"

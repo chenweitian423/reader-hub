@@ -16,6 +16,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read app version
+        id: version
+        run: |
+          VERSION="$(tr -d '\n\r' < VERSION)"
+          if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid VERSION file content: ${VERSION}"
+            exit 1
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<<"${VERSION}"
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
+          echo "patch=${PATCH}" >> "$GITHUB_OUTPUT"
+
       - name: Validate image config
         run: |
           if [ -z "${IMAGE_NAME}" ]; then
@@ -39,6 +53,8 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.value }}
+            type=raw,value=${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}
             type=sha,prefix=sha-
 
       - name: Build and push

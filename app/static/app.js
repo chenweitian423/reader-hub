@@ -1,4 +1,8 @@
 const state = {
+  appMeta: {
+    title: "Reader Hub",
+    version: "0.0.0",
+  },
   sources: [],
   sampleJson: null,
   results: [],
@@ -98,6 +102,12 @@ const elements = {
   contentWidthValue: document.querySelector("#content-width-value"),
   lineHeightRange: document.querySelector("#line-height-range"),
   lineHeightValue: document.querySelector("#line-height-value"),
+  appTitle: document.querySelector("#app-title"),
+  appVersionBadge: document.querySelector("#app-version-badge"),
+  backupExportBtn: document.querySelector("#backup-export-btn"),
+  backupImportMode: document.querySelector("#backup-import-mode"),
+  backupFile: document.querySelector("#backup-file"),
+  backupImportBtn: document.querySelector("#backup-import-btn"),
 };
 
 function setStatus(text, type = "idle") {
@@ -223,6 +233,12 @@ function renderSummary() {
   elements.summaryShelfCount.textContent = String(state.summary.shelf_count);
   elements.summaryReadingMeta.textContent = `进行中 ${state.summary.reading_count} 本`;
   elements.summaryCacheCount.textContent = String(state.summary.cached_chapter_count);
+}
+
+function renderAppMeta() {
+  elements.appTitle.textContent = `${state.appMeta.title} ${state.appMeta.version}`;
+  elements.appVersionBadge.textContent = `v${state.appMeta.version}`;
+  document.title = `${state.appMeta.title} v${state.appMeta.version}`;
 }
 
 async function apiFetch(url, options = {}) {
@@ -633,6 +649,11 @@ async function refreshSources() {
   await refreshSummary();
 }
 
+async function refreshAppMeta() {
+  state.appMeta = await apiFetch("/api/app/meta", { method: "GET", headers: {} });
+  renderAppMeta();
+}
+
 async function refreshShelf() {
   state.shelfBooks = await apiFetch("/api/library/books", { method: "GET", headers: {} });
   renderShelf();
@@ -750,6 +771,73 @@ async function importSources() {
     setStatus(error.message, "error");
   } finally {
     elements.importBtn.disabled = false;
+  }
+}
+
+async function exportBackup() {
+  elements.backupExportBtn.disabled = true;
+  setStatus("正在生成备份文件", "loading");
+  try {
+    const payload = await apiFetch("/api/library/backup", {
+      method: "GET",
+      headers: {},
+    });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `reader-hub-backup-v${state.appMeta.version}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+    setStatus("备份文件已导出", "success");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    elements.backupExportBtn.disabled = false;
+  }
+}
+
+async function importBackup() {
+  const [file] = elements.backupFile.files || [];
+  if (!file) {
+    setStatus("请先选择备份 JSON 文件", "error");
+    return;
+  }
+
+  const mode = elements.backupImportMode.value || "merge";
+  const confirmed =
+    mode === "replace"
+      ? window.confirm("覆盖恢复会清空当前书源、书架和缓存，确认继续吗？")
+      : true;
+  if (!confirmed) return;
+
+  elements.backupImportBtn.disabled = true;
+  setStatus(mode === "replace" ? "正在覆盖恢复备份" : "正在导入备份", "loading");
+  try {
+    const raw = await file.text();
+    const backupData = JSON.parse(raw);
+    const payload = await apiFetch("/api/library/restore", {
+      method: "POST",
+      body: JSON.stringify({
+        mode,
+        data: backupData,
+      }),
+    });
+    await Promise.all([refreshAppMeta(), refreshSources(), refreshShelf(), refreshPreferences()]);
+    resetReader();
+    renderSummary();
+    const actionText = mode === "replace" ? "覆盖恢复完成" : "备份导入完成";
+    setStatus(
+      `${actionText}，书源 ${payload.source_count} 个，书架 ${payload.shelf_count} 本，缓存 ${payload.cached_chapter_count} 章`,
+      "success",
+    );
+    elements.backupFile.value = "";
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    elements.backupImportBtn.disabled = false;
   }
 }
 
@@ -1092,6 +1180,8 @@ function handleShelfFilterChange() {
 
 elements.importBtn.addEventListener("click", importSources);
 elements.loadSampleBtn.addEventListener("click", loadSampleJson);
+elements.backupExportBtn.addEventListener("click", exportBackup);
+elements.backupImportBtn.addEventListener("click", importBackup);
 elements.searchForm.addEventListener("submit", searchBooks);
 elements.prevChapterBtn.addEventListener("click", () => {
   if (state.reader.activeChapterIndex > 0) {
@@ -1127,10 +1217,16 @@ elements.sourceFile.addEventListener("change", async (event) => {
   elements.sourceJson.value = await file.text();
   setStatus(`已载入文件: ${file.name}`, "idle");
 });
+elements.backupFile.addEventListener("change", (event) => {
+  const [file] = event.target.files || [];
+  if (!file) return;
+  setStatus(`已选择备份文件: ${file.name}`, "idle");
+});
 
-Promise.all([refreshSources(), refreshShelf(), refreshPreferences()])
+Promise.all([refreshAppMeta(), refreshSources(), refreshShelf(), refreshPreferences()])
   .then(() => {
     resetReader();
+    renderAppMeta();
     renderSummary();
   })
   .catch((error) => {

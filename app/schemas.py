@@ -185,6 +185,11 @@ class DashboardSummaryRead(BaseModel):
     reading_count: int = 0
 
 
+class AppMetaRead(BaseModel):
+    title: str
+    version: str
+
+
 class ChapterCacheRequest(BaseModel):
     source_id: int
     book: dict[str, Any]
@@ -226,3 +231,18 @@ class PrefetchTaskRead(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+
+
+class BackupRestoreRequest(BaseModel):
+    mode: str = "merge"
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class BackupRestoreResponse(BaseModel):
+    mode: str
+    source_count: int = 0
+    shelf_count: int = 0
+    cached_chapter_count: int = 0
+    imported_source_count: int = 0
+    imported_shelf_count: int = 0
+    imported_cached_chapter_count: int = 0

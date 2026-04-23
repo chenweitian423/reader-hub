@@ -1,10 +1,13 @@
 # Reader Hub
 
+当前版本：`1.5.0`
+
 一个可 Docker 部署的轻量读书软件，支持：
 
 - 导入自定义 JSON 书源
 - 启用、停用、删除书源
 - 按关键词并发搜索多个书源
+- 数据备份、恢复与迁移
 - 书架收藏与继续阅读
 - 书架分类、标签与书架内搜索
 - 阅读进度自动保存
@@ -19,6 +22,7 @@
 - SQLite 本地持久化
 - Docker / Docker Compose 一键启动
 - Docker 健康检查与环境变量配置
+- 版本文件、更新日志和 Docker 版本镜像标签
 
 ## 1. 项目结构
 
@@ -38,6 +42,8 @@
 │       ├── sample_sources.json
 │       └── styles.css
 ├── data
+├── CHANGELOG.md
+├── VERSION
 ├── docker-compose.yml
 ├── Dockerfile
 └── requirements.txt
@@ -54,7 +60,7 @@ docker compose up --build
 当前仓库内的 [`docker-compose.yml`](/Users/sky/Documents/test/docker-compose.yml) 已改为直接使用已发布镜像：
 
 ```text
-chenxiaotian423/reader-hub:latest
+chenxiaotian423/reader-hub:${READER_HUB_IMAGE_TAG:-latest}
 ```
 
 因此在部署机器上通常直接运行即可：
@@ -63,13 +69,23 @@ chenxiaotian423/reader-hub:latest
 docker compose up -d
 ```
 
+如果你希望固定到某个发布版本，可以先复制 [`.env.example`](/Users/sky/Documents/test/.env.example) 为 `.env`，然后把：
+
+```text
+READER_HUB_IMAGE_TAG=1.5.0
+```
+
+改成你要部署的镜像版本。
+
 Compose 默认包含这些环境变量：
 
+- `READER_HUB_IMAGE_TAG=latest`
 - `READER_HUB_DATABASE_URL=sqlite:///./data/app.db`
 - `READER_HUB_APP_TITLE=Reader Hub`
 - `READER_HUB_AUTO_SEED_DEMO_SOURCE=true`
 
 镜像使用说明文档已整理在 [DOCKERHUB.md](/Users/sky/Documents/test/DOCKERHUB.md)，便于后续同步到 Docker Hub 仓库说明。
+版本更新说明记录在 [CHANGELOG.md](/Users/sky/Documents/test/CHANGELOG.md)。
 
 启动后访问：
 
@@ -85,6 +101,12 @@ uvicorn app.main:app --reload
 ```
 
 ## 3. Docker 环境变量
+
+### `READER_HUB_IMAGE_TAG`
+
+- 默认值：`latest`
+- 用途：指定 `docker-compose.yml` 拉取的镜像版本
+- 示例：`1.5.0`
 
 ### `READER_HUB_DATABASE_URL`
 
@@ -110,6 +132,7 @@ uvicorn app.main:app --reload
 5. 选择章节后即可直接查看正文
 6. 点击“缓存本书”可提前缓存全部章节，之后重复打开会优先命中本地缓存
 7. 返回页面后可在“我的书架”中继续阅读，并保留你的阅读设置
+8. 也可以用侧边栏“数据备份”导出当前书源、书架、缓存和阅读设置
 
 示例内已包含一个本地演示书源，不依赖第三方站点即可试读完整流程。
 现在首次启动时也会自动写入“内置演示书源”，不必手动导入才能开始体验。
@@ -333,6 +356,30 @@ GET /api/library/books
 - `category`
 - `tags`
 
+### 导出备份
+
+```http
+GET /api/library/backup
+```
+
+### 恢复备份
+
+```http
+POST /api/library/restore
+```
+
+```json
+{
+  "mode": "merge",
+  "data": {}
+}
+```
+
+`mode` 支持：
+
+- `merge`：合并导入
+- `replace`：覆盖恢复
+
 ### 加入书架
 
 ```http
@@ -481,6 +528,12 @@ PUT /api/reader/preferences
 - [`.github/workflows/docker-publish.yml`](/Users/sky/Documents/test/.github/workflows/docker-publish.yml)
 
 它会在 `main` 分支有新提交时自动构建镜像并推送到 Docker Hub。
+工作流会读取 [VERSION](/Users/sky/Documents/test/VERSION) 文件，并自动推送这些镜像 tag：
+
+- `latest`
+- `1.5.0`
+- `1.5`
+- `sha-<commit>`
 
 ### 本地推送代码
 

@@ -8,6 +8,19 @@ Docker 镜像地址：
 chenxiaotian423/reader-hub:latest
 ```
 
+当前发布版本：
+
+```text
+1.5.0
+```
+
+每次迭代发布后，镜像会同时生成这些标签：
+
+- `latest`
+- `1.5.0`
+- `1.5`
+- `sha-<commit>`
+
 ## 快速启动
 
 ### docker run
@@ -28,7 +41,7 @@ docker run -d \
 ```yaml
 services:
   reader-hub:
-    image: chenxiaotian423/reader-hub:latest
+    image: chenxiaotian423/reader-hub:${READER_HUB_IMAGE_TAG:-latest}
     ports:
       - "8000:8000"
     environment:
@@ -47,6 +60,12 @@ http://localhost:8000
 ```
 
 ## 环境变量
+
+### `READER_HUB_IMAGE_TAG`
+
+- 默认值：`latest`
+- 作用：指定要部署的 Docker 镜像版本
+- 例子：`1.5.0`
 
 ### `READER_HUB_DATABASE_URL`
 
@@ -75,7 +94,9 @@ http://localhost:8000
 
 ## 主要能力
 
+- 应用版本号、更新日志与 Docker 版本镜像标签
 - 导入和管理 JSON 书源
+- 数据备份、恢复和跨环境迁移
 - 聚合搜索多个书源
 - 书架收藏、继续阅读和阅读设置持久化
 - 书架分类、标签与书架内搜索

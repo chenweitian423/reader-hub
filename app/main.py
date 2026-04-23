@@ -20,6 +20,9 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db, init_db
 from app.models import BookSource, CachedChapter, PrefetchTask, ReaderPreference, ShelfBook
 from app.schemas import (
+    AppMetaRead,
+    BackupRestoreRequest,
+    BackupRestoreResponse,
     BookOpenRequest,
     BookOpenResponse,
     BookSourceRead,
@@ -49,6 +52,7 @@ from app.services.source_executor import (
     normalize_source_payload,
     search_source,
 )
+from app.version import APP_VERSION
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -100,7 +104,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title=APP_TITLE, version="1.4.0", lifespan=lifespan)
+app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -212,6 +216,19 @@ def serialize_shelf_book(book: ShelfBook, cached_count: int = 0) -> ShelfBookRea
         added_at=book.added_at,
         last_read_at=book.last_read_at,
     )
+
+
+def parse_optional_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    normalized = normalized.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is not None:
+        return parsed.astimezone().replace(tzinfo=None)
+    return parsed
 
 
 def get_source_or_404(source_id: int, db: Session) -> BookSource:
@@ -442,7 +459,12 @@ async def index() -> FileResponse:
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION, "title": APP_TITLE}
+
+
+@app.get("/api/app/meta", response_model=AppMetaRead)
+async def app_meta() -> AppMetaRead:
+    return AppMetaRead(title=APP_TITLE, version=APP_VERSION)
 
 
 @app.get("/api/dashboard/summary", response_model=DashboardSummaryRead)
@@ -546,6 +568,184 @@ async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]
         .all()
     )
     return [serialize_shelf_book(book, int(cache_counts.get(book.book_key, 0))) for book in books]
+
+
+@app.get("/api/library/backup")
+async def export_backup(db: Session = Depends(get_db)) -> dict[str, Any]:
+    sources = db.query(BookSource).order_by(BookSource.created_at.asc()).all()
+    shelf_books = db.query(ShelfBook).order_by(ShelfBook.added_at.asc()).all()
+    cached_chapters = db.query(CachedChapter).order_by(CachedChapter.cached_at.asc()).all()
+    preferences = get_or_create_preferences(db)
+    shelf_map = {book.book_key: book for book in shelf_books}
+
+    return {
+        "format_version": 1,
+        "app": {
+            "title": APP_TITLE,
+            "version": APP_VERSION,
+        },
+        "exported_at": datetime.utcnow().isoformat(),
+        "sources": [loads_config(source.config_json) for source in sources],
+        "preferences": serialize_preferences(preferences).model_dump(),
+        "shelf_books": [
+            {
+                "source_name": book.source_name,
+                "category": book.category,
+                "tags": loads_config(book.tags_json),
+                "book": loads_config(book.book_json),
+                "last_chapter": loads_config(book.last_chapter_json),
+                "last_chapter_index": book.last_chapter_index,
+                "last_read_at": book.last_read_at.isoformat() if book.last_read_at else None,
+                "added_at": book.added_at.isoformat() if book.added_at else None,
+            }
+            for book in shelf_books
+        ],
+        "cached_chapters": [
+            {
+                "source_name": shelf_map[chapter.book_key].source_name,
+                "book": loads_config(shelf_map[chapter.book_key].book_json),
+                "chapter": loads_config(chapter.chapter_json),
+                "chapter_index": chapter.chapter_index,
+                "title": chapter.chapter_title,
+                "content": chapter.content,
+                "cached_at": chapter.cached_at.isoformat() if chapter.cached_at else None,
+            }
+            for chapter in cached_chapters
+            if chapter.book_key in shelf_map
+        ],
+    }
+
+
+@app.post("/api/library/restore", response_model=BackupRestoreResponse)
+async def restore_backup(
+    payload: BackupRestoreRequest,
+    db: Session = Depends(get_db),
+) -> BackupRestoreResponse:
+    mode = payload.mode.strip().lower() or "merge"
+    if mode not in {"merge", "replace"}:
+        raise HTTPException(status_code=400, detail="恢复模式只支持 merge 或 replace")
+
+    backup = payload.data or {}
+    source_items = backup.get("sources", [])
+    shelf_items = backup.get("shelf_books", [])
+    cached_items = backup.get("cached_chapters", [])
+    if not isinstance(source_items, list) or not isinstance(shelf_items, list) or not isinstance(cached_items, list):
+        raise HTTPException(status_code=400, detail="备份文件格式不正确")
+
+    if mode == "replace":
+        db.query(CachedChapter).delete(synchronize_session=False)
+        db.query(PrefetchTask).delete(synchronize_session=False)
+        db.query(ShelfBook).delete(synchronize_session=False)
+        db.query(BookSource).delete(synchronize_session=False)
+        db.commit()
+
+    normalized_sources = normalize_source_payload(source_items)
+    source_map: dict[str, BookSource] = {}
+    imported_source_count = 0
+    imported_shelf_count = 0
+    imported_cached_count = 0
+
+    for item in normalized_sources:
+        existing = db.query(BookSource).filter(BookSource.name == item.name).first()
+        config = item.model_dump()
+        if existing:
+            existing.description = item.description
+            existing.enabled = item.enabled
+            existing.config_json = dumps_config(config)
+            source = existing
+        else:
+            source = BookSource(
+                name=item.name,
+                description=item.description,
+                enabled=item.enabled,
+                config_json=dumps_config(config),
+            )
+            db.add(source)
+            imported_source_count += 1
+        db.flush()
+        source_map[source.name] = source
+
+    preference_payload = backup.get("preferences") or {}
+    if preference_payload:
+        preference = get_or_create_preferences(db)
+        preference.theme = preference_payload.get("theme", preference.theme)
+        preference.font_size = max(14, min(int(preference_payload.get("font_size", preference.font_size)), 32))
+        preference.content_width = max(
+            560, min(int(preference_payload.get("content_width", preference.content_width)), 1200)
+        )
+        preference.line_height = max(1.4, min(float(preference_payload.get("line_height", preference.line_height)), 3.0))
+        db.add(preference)
+
+    for item in shelf_items:
+        if not isinstance(item, dict):
+            continue
+        source_name = str(item.get("source_name", "")).strip()
+        book_payload = item.get("book") or {}
+        source = source_map.get(source_name) or db.query(BookSource).filter(BookSource.name == source_name).first()
+        if not source or not isinstance(book_payload, dict):
+            continue
+
+        shelf_book = upsert_shelf_book(db, source_id=source.id, source_name=source.name, book=book_payload)
+        normalized_book = loads_config(shelf_book.book_json)
+        last_chapter = item.get("last_chapter") or {}
+        normalized_last_chapter = (
+            normalize_chapter_payload(normalized_book["book_key"], last_chapter) if isinstance(last_chapter, dict) and last_chapter else {}
+        )
+        shelf_book.category = str(item.get("category", "")).strip()
+        shelf_book.tags_json = dumps_config([str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()])
+        shelf_book.last_chapter_json = dumps_config(normalized_last_chapter)
+        shelf_book.last_chapter_title = normalized_last_chapter.get("title", "")
+        shelf_book.last_chapter_index = int(item.get("last_chapter_index", -1))
+        shelf_book.last_read_at = parse_optional_datetime(item.get("last_read_at"))
+        added_at = parse_optional_datetime(item.get("added_at"))
+        if added_at:
+            shelf_book.added_at = added_at
+        db.add(shelf_book)
+        imported_shelf_count += 1
+
+    db.flush()
+
+    for item in cached_items:
+        if not isinstance(item, dict):
+            continue
+        source_name = str(item.get("source_name", "")).strip()
+        book_payload = item.get("book") or {}
+        chapter_payload = item.get("chapter") or {}
+        source = source_map.get(source_name) or db.query(BookSource).filter(BookSource.name == source_name).first()
+        if not source or not isinstance(book_payload, dict) or not isinstance(chapter_payload, dict):
+            continue
+
+        normalized_book = normalize_book_payload(source.id, source.name, book_payload)
+        upsert_shelf_book(db, source_id=source.id, source_name=source.name, book=normalized_book)
+        normalized_chapter = normalize_chapter_payload(normalized_book["book_key"], chapter_payload)
+        cached = get_cached_chapter(db, normalized_book["book_key"], normalized_chapter["chapter_key"])
+        cached = cached or CachedChapter(
+            book_key=normalized_book["book_key"],
+            chapter_key=normalized_chapter["chapter_key"],
+            source_id=source.id,
+        )
+        cached.chapter_title = str(item.get("title") or normalized_chapter.get("title") or "")
+        cached.chapter_index = int(item.get("chapter_index", -1))
+        cached.chapter_json = dumps_config(normalized_chapter)
+        cached.content = str(item.get("content", ""))
+        cached.cached_at = parse_optional_datetime(item.get("cached_at")) or datetime.utcnow()
+        db.add(cached)
+        imported_cached_count += 1
+
+    db.commit()
+
+    source_count = db.query(func.count(BookSource.id)).scalar() or 0
+    shelf_count = db.query(func.count(ShelfBook.id)).scalar() or 0
+    cached_count = db.query(func.count(CachedChapter.id)).scalar() or 0
+    return BackupRestoreResponse(
+        mode=mode,
+        source_count=int(source_count),
+        shelf_count=int(shelf_count),
+        cached_chapter_count=int(cached_count),
+        imported_source_count=imported_source_count,
+        imported_shelf_count=imported_shelf_count,
+        imported_cached_chapter_count=imported_cached_count,
+    )
 
 
 @app.post("/api/library/books", response_model=ShelfBookRead)

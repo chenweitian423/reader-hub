@@ -147,7 +147,8 @@ textarea,
 .setting-item select,
 .shelf-tools input,
 .shelf-tools select,
-.meta-grid input {
+.meta-grid input,
+.meta-grid select {
   width: 100%;
   border: 1px solid rgba(84, 59, 29, 0.18);
   border-radius: var(--radius-md);
@@ -165,9 +166,18 @@ textarea {
 
 textarea:focus,
 .search-bar input:focus,
-.setting-item select:focus {
+.setting-item select:focus,
+.meta-grid input:focus,
+.meta-grid select:focus {
   border-color: rgba(181, 82, 51, 0.55);
   transform: translateY(-1px);
+}
+
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .inline-actions,
@@ -359,7 +369,8 @@ button:disabled {
 }
 
 .shelf-tools select,
-.meta-grid input {
+.meta-grid input,
+.meta-grid select {
   border: 1px solid rgba(84, 59, 29, 0.18);
   border-radius: 14px;
   background: var(--surface-strong);
