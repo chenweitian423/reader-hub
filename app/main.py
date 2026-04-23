@@ -13,6 +13,7 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -60,6 +61,7 @@ from app.services.source_executor import (
     search_source,
 )
 from app.services.uploaded_library import (
+    SUPPORTED_UPLOAD_SUFFIXES,
     ensure_uploaded_library_dirs,
     parse_uploaded_book,
     save_uploaded_book,
@@ -79,6 +81,11 @@ AUTO_SEED_DEMO_SOURCE = os.getenv("READER_HUB_AUTO_SEED_DEMO_SOURCE", "true").st
     "off",
 }
 UPLOADED_SOURCE_NAME = "本地导入书库"
+ALLOWED_CORS_ORIGINS = [
+    item.strip()
+    for item in os.getenv("READER_HUB_CORS_ORIGINS", "*").split(",")
+    if item.strip()
+]
 
 
 def build_uploaded_source_config() -> dict[str, Any]:
@@ -221,6 +228,13 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_CORS_ORIGINS or ["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -724,6 +738,30 @@ async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]
         .all()
     )
     return [serialize_shelf_book(book, int(cache_counts.get(book.book_key, 0))) for book in books]
+
+
+@app.get("/api/library/uploads")
+async def upload_books_api_info(request: Request) -> dict[str, Any]:
+    base_url = str(request.base_url).rstrip("/")
+    return {
+        "message": "这个地址用于局域网书籍上传。请使用 POST multipart/form-data，而不是直接在浏览器里 GET 打开。",
+        "method": "POST",
+        "content_type": "multipart/form-data",
+        "endpoint": f"{base_url}/api/library/uploads",
+        "fields": {
+            "files": "一个或多个书籍文件",
+            "category": "可选，导入后的默认分类",
+            "tags": "可选，逗号分隔的默认标签",
+        },
+        "supported_formats": sorted(item.lstrip('.') for item in SUPPORTED_UPLOAD_SUFFIXES),
+        "example_curl": (
+            f"curl -X POST '{base_url}/api/library/uploads' "
+            "-F 'files=@/path/to/book.epub' "
+            "-F 'category=本地导入' "
+            "-F 'tags=上传,局域网'"
+        ),
+        "cors_origins": ALLOWED_CORS_ORIGINS or ["*"],
+    }
 
 
 @app.post("/api/library/uploads", response_model=UploadedBookImportResponse)

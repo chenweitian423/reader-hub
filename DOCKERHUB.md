@@ -11,13 +11,13 @@ chenxiaotian423/reader-hub:latest
 当前发布版本：
 
 ```text
-1.13.0
+1.13.1
 ```
 
 每次迭代发布后，镜像会同时生成这些标签：
 
 - `latest`
-- `1.13.0`
+- `1.13.1`
 - `1.13`
 - `sha-<commit>`
 
@@ -84,6 +84,12 @@ http://localhost:8000
 - 可选值：`true` / `false`
 - 作用：首次启动时是否自动写入“内置演示书源”
 
+### `READER_HUB_CORS_ORIGINS`
+
+- 默认值：`*`
+- 作用：配置局域网上传接口等前端调用允许的跨域来源
+- 例子：`http://192.168.123.10:3000,https://reader.example.com`
+
 ## 健康检查
 
 镜像已内置健康检查，探测地址：
@@ -117,6 +123,8 @@ http://localhost:8000
 ```text
 POST /api/library/uploads
 ```
+
+直接在浏览器里访问这个地址时，镜像现在会返回一份 JSON 接口说明，不再只返回 `405 Method Not Allowed`。
 
 请求格式：
 

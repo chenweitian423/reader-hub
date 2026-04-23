@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.13.0`
+当前版本：`1.13.1`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -90,6 +90,7 @@ Compose 默认包含这些环境变量：
 - `READER_HUB_DATABASE_URL=sqlite:///./data/app.db`
 - `READER_HUB_APP_TITLE=Reader Hub`
 - `READER_HUB_AUTO_SEED_DEMO_SOURCE=true`
+- `READER_HUB_CORS_ORIGINS=*`
 
 镜像使用说明文档已整理在 [DOCKERHUB.md](/Users/sky/Documents/test/DOCKERHUB.md)，便于后续同步到 Docker Hub 仓库说明。
 版本更新说明记录在 [CHANGELOG.md](/Users/sky/Documents/test/CHANGELOG.md)。
@@ -130,6 +131,12 @@ uvicorn app.main:app --reload
 - 默认值：`true`
 - 用途：控制首次启动时是否自动导入内置演示书源
 
+### `READER_HUB_CORS_ORIGINS`
+
+- 默认值：`*`
+- 用途：配置局域网上传接口等前端调用允许的跨域来源
+- 示例：`http://192.168.123.10:3000,https://reader.example.com`
+
 ## 4. 快速体验
 
 1. 打开页面后点击“填入示例”
@@ -167,6 +174,8 @@ uvicorn app.main:app --reload
 ```text
 POST /api/library/uploads
 ```
+
+如果你只是把这个地址直接复制进浏览器，现在也会返回接口说明，不会再只看到 `405 Method Not Allowed`。
 
 请求格式为 `multipart/form-data`，字段：
 
