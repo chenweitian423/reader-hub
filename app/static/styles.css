@@ -473,6 +473,37 @@ button:disabled {
   gap: 18px;
 }
 
+.home-rails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.rail-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  background: rgba(255, 251, 245, 0.84);
+  padding: 24px;
+}
+
+.rail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.rail-item {
+  width: 100%;
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--ink);
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  justify-items: start;
+}
+
 .spotlight-card,
 .continue-card {
   border-radius: var(--radius-xl);
@@ -576,6 +607,64 @@ button:disabled {
   text-transform: uppercase;
   color: var(--accent);
   font-weight: 700;
+}
+
+.results-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.result-detail-panel {
+  position: sticky;
+  top: 24px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  background:
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.16), transparent 28%),
+    rgba(255, 251, 245, 0.92);
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+}
+
+.result-detail-panel.empty {
+  min-height: 320px;
+}
+
+.result-detail-cover-wrap {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 3 / 4;
+  border-radius: 24px;
+  overflow: hidden;
+  background:
+    linear-gradient(160deg, rgba(194, 91, 47, 0.2), rgba(36, 22, 13, 0.08)),
+    #efe0cf;
+}
+
+.result-detail-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-detail-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.result-detail-copy h3 {
+  font-size: 28px;
+  line-height: 1.16;
+}
+
+.result-detail-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .stats-grid {
@@ -737,6 +826,12 @@ button:disabled {
 
 .result-card {
   grid-template-columns: 96px 1fr;
+  cursor: pointer;
+}
+
+.result-card.active {
+  border-color: rgba(194, 91, 47, 0.32);
+  box-shadow: 0 16px 40px rgba(194, 91, 47, 0.14);
 }
 
 .result-cover-wrap,
@@ -997,10 +1092,16 @@ button:disabled {
 
 @media (max-width: 1180px) {
   .home-panels,
+  .home-rails,
+  .results-layout,
   .reader-shell,
   .settings-grid,
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .result-detail-panel {
+    position: static;
   }
 }
 

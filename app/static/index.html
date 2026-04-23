@@ -121,6 +121,34 @@
             </article>
           </section>
 
+          <section class="home-rails">
+            <article class="rail-card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">书城分区</p>
+                  <h3>可立即阅读</h3>
+                </div>
+                <span class="badge">精选</span>
+              </div>
+              <div id="home-readable-list" class="rail-list empty">
+                搜索到可阅读结果后，这里会帮你挑出更适合直接打开的书。
+              </div>
+            </article>
+
+            <article class="rail-card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">书城分区</p>
+                  <h3>已在书架</h3>
+                </div>
+                <span class="badge">收藏</span>
+              </div>
+              <div id="home-shelf-picks" class="rail-list empty">
+                搜索结果里如果有已经收藏过的书，会在这里集中展示。
+              </div>
+            </article>
+          </section>
+
           <section class="card card-tight">
             <div class="section-head">
               <h2>搜索状态</h2>
@@ -159,8 +187,29 @@
                 </select>
               </label>
             </div>
-            <div id="results" class="results empty">
-              还没有结果，先到“书源管理”导入示例书源，再回来搜索“月”或“便利店”。
+            <div class="results-layout">
+              <div id="results" class="results empty">
+                还没有结果，先到“书源管理”导入示例书源，再回来搜索“月”或“便利店”。
+              </div>
+              <aside id="result-detail-panel" class="result-detail-panel empty">
+                <div class="result-detail-cover-wrap">
+                  <img id="result-detail-cover" class="result-detail-cover" alt="书籍详情封面" />
+                </div>
+                <div class="result-detail-copy">
+                  <p id="result-detail-source" class="spotlight-source">书籍详情</p>
+                  <h3 id="result-detail-title">先从左侧挑一本书</h3>
+                  <p id="result-detail-author" class="muted">这里会展示你当前选中的书。</p>
+                  <p id="result-detail-meta" class="muted">你可以先搜索，再从结果列表中切换书籍。</p>
+                  <p id="result-detail-intro" class="muted">
+                    这个详情面板会显示更完整的简介、来源、收藏状态和操作按钮，帮助你更快决定下一步要不要打开阅读。
+                  </p>
+                  <div class="result-detail-tags" id="result-detail-tags"></div>
+                  <div class="spotlight-actions">
+                    <button id="result-detail-primary" type="button">开始搜索</button>
+                    <button id="result-detail-secondary" class="ghost-btn" type="button">去书源管理</button>
+                  </div>
+                </div>
+              </aside>
             </div>
           </section>
 
