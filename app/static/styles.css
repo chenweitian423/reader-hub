@@ -479,6 +479,12 @@ button:disabled {
   gap: 18px;
 }
 
+.discovery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
 .rail-card {
   border-radius: var(--radius-xl);
   border: 1px solid var(--line);
@@ -510,6 +516,16 @@ button:disabled {
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
   background: rgba(255, 251, 245, 0.86);
+  padding: 24px;
+}
+
+.discovery-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  background:
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.1), transparent 28%),
+    rgba(255, 251, 245, 0.88);
   padding: 24px;
 }
 
@@ -609,6 +625,44 @@ button:disabled {
   font-weight: 700;
 }
 
+.discovery-list {
+  display: grid;
+  gap: 10px;
+}
+
+.search-history-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.history-chip {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(36, 22, 13, 0.06);
+  color: var(--ink);
+}
+
+.discovery-item,
+.result-detail-related-item {
+  width: 100%;
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink);
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  justify-items: start;
+}
+
+.discovery-meta {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
 .results-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
@@ -667,6 +721,38 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.result-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-fact {
+  border-radius: 18px;
+  border: 1px solid rgba(89, 62, 32, 0.08);
+  background: rgba(255, 255, 255, 0.64);
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.detail-fact span {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.detail-fact strong {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.result-detail-related-list {
+  display: grid;
+  gap: 10px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -713,6 +799,8 @@ button:disabled {
 }
 
 .source-list.empty,
+.discovery-list.empty,
+.result-detail-related-list.empty,
 .results.empty,
 .chapter-list.empty,
 .shelf-list.empty,
@@ -979,6 +1067,63 @@ button:disabled {
     #f1e4d2;
 }
 
+.reader-stage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 4px 0 10px;
+}
+
+.reader-stage-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.reader-stage-copy strong {
+  font-size: 18px;
+}
+
+.reader-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(89, 62, 32, 0.1);
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+
+.reader-progress-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #c25b2f, #8e3716);
+  transition: width 180ms ease;
+}
+
+.reader-section.focus-mode .reader-shell {
+  grid-template-columns: 1fr;
+}
+
+.reader-section.focus-mode .reader-sidebar,
+.reader-section.focus-mode .reader-settings {
+  display: none;
+}
+
+.reader-section.focus-mode .reader-main {
+  background:
+    radial-gradient(circle at top center, rgba(255, 248, 235, 0.88), transparent 45%),
+    rgba(255, 252, 247, 0.96);
+}
+
+.reader-section[data-reader-theme="night"] .reader-progress-track {
+  background: rgba(232, 237, 244, 0.12);
+}
+
+.reader-section[data-reader-theme="night"].focus-mode .reader-main {
+  background: rgba(17, 22, 28, 0.98);
+}
+
 .reader-book-meta,
 .reader-book-intro {
   margin-top: 10px;
@@ -1092,6 +1237,7 @@ button:disabled {
 
 @media (max-width: 1180px) {
   .home-panels,
+  .discovery-grid,
   .home-rails,
   .results-layout,
   .reader-shell,
@@ -1121,6 +1267,10 @@ button:disabled {
   }
 
   .spotlight-body {
+    grid-template-columns: 1fr;
+  }
+
+  .result-detail-facts {
     grid-template-columns: 1fr;
   }
 
@@ -1171,6 +1321,10 @@ button:disabled {
   .result-card,
   .reader-book-card,
   .shelf-item {
+    grid-template-columns: 1fr;
+  }
+
+  .result-detail-facts {
     grid-template-columns: 1fr;
   }
 

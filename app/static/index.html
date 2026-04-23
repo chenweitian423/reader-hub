@@ -64,9 +64,9 @@
           <section class="hero hero-home">
             <div class="hero-copy">
               <p class="eyebrow">搜书首页</p>
-              <h2>只保留你最常用的事：搜书、筛选、打开就读</h2>
+              <h2>像真正书城一样找书，但把打开阅读这一步留得足够近</h2>
               <p class="muted">
-                书架、书源管理和数据工具都已经收进左侧菜单。首页现在只服务于找书和阅读。
+                首页继续聚焦搜索与阅读，同时补上最近搜索、更新推荐和相关推荐，让它更像一个可逛的书城首页。
               </p>
               <div class="quick-keywords">
                 <button class="keyword-chip" type="button" data-keyword="月">试试搜“月”</button>
@@ -149,6 +149,47 @@
             </article>
           </section>
 
+          <section class="discovery-grid">
+            <article class="discovery-card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">书城分区</p>
+                  <h3>最近搜索</h3>
+                </div>
+                <span class="badge">历史</span>
+              </div>
+              <div id="home-recent-searches" class="discovery-list empty">
+                你最近搜索过的关键词会显示在这里，方便一键重新进入。
+              </div>
+            </article>
+
+            <article class="discovery-card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">书城分区</p>
+                  <h3>最近更新</h3>
+                </div>
+                <span class="badge">更新</span>
+              </div>
+              <div id="home-updates-list" class="discovery-list empty">
+                搜索结果里带有最新章节信息的书，会在这里集中展示。
+              </div>
+            </article>
+
+            <article class="discovery-card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">书城分区</p>
+                  <h3>相关推荐</h3>
+                </div>
+                <span class="badge">推荐</span>
+              </div>
+              <div id="home-related-list" class="discovery-list empty">
+                当你选中一本书后，这里会帮你推荐同作者或同来源的其他书。
+              </div>
+            </article>
+          </section>
+
           <section class="card card-tight">
             <div class="section-head">
               <h2>搜索状态</h2>
@@ -203,7 +244,14 @@
                   <p id="result-detail-intro" class="muted">
                     这个详情面板会显示更完整的简介、来源、收藏状态和操作按钮，帮助你更快决定下一步要不要打开阅读。
                   </p>
+                  <div id="result-detail-facts" class="result-detail-facts"></div>
                   <div class="result-detail-tags" id="result-detail-tags"></div>
+                  <div>
+                    <p class="eyebrow">相关推荐</p>
+                    <div id="result-detail-related" class="result-detail-related-list empty">
+                      选中一本书后，这里会补充同作者或同来源推荐。
+                    </div>
+                  </div>
                   <div class="spotlight-actions">
                     <button id="result-detail-primary" type="button">开始搜索</button>
                     <button id="result-detail-secondary" class="ghost-btn" type="button">去书源管理</button>
@@ -262,12 +310,24 @@
                     <h2 id="reader-chapter-title">请选择章节</h2>
                   </div>
                   <div class="reader-nav">
+                    <button id="reader-focus-btn" class="ghost-btn" type="button">沉浸模式</button>
                     <button id="toggle-shelf-btn" class="ghost-btn" type="button">加入书架</button>
                     <button id="cache-book-btn" class="ghost-btn" type="button">缓存本书</button>
                     <button id="clear-cache-btn" class="ghost-btn" type="button">清空缓存</button>
                     <button id="prev-chapter-btn" class="ghost-btn" type="button">上一章</button>
                     <button id="next-chapter-btn" class="ghost-btn" type="button">下一章</button>
                   </div>
+                </div>
+
+                <div class="reader-stage-bar">
+                  <div class="reader-stage-copy">
+                    <p id="reader-session-label" class="eyebrow">沉浸阅读</p>
+                    <strong id="reader-progress-text">未开始阅读</strong>
+                  </div>
+                  <span id="reader-progress-badge" class="badge">0%</span>
+                </div>
+                <div class="reader-progress-track">
+                  <div id="reader-progress-bar" class="reader-progress-bar"></div>
                 </div>
 
                 <div class="cache-summary-row">
