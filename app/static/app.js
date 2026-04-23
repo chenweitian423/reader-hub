@@ -139,6 +139,22 @@ function parseTags(value) {
     .filter(Boolean);
 }
 
+function clearPrefetchPolling() {
+  if (prefetchPollTimer) {
+    window.clearTimeout(prefetchPollTimer);
+    prefetchPollTimer = null;
+  }
+}
+
+function isPrefetchRunning() {
+  return Boolean(
+    state.prefetchTask &&
+      state.reader.book &&
+      state.prefetchTask.book_key === state.reader.book.book_key &&
+      ["pending", "running"].includes(state.prefetchTask.status),
+  );
+}
+
 function setReaderPreferenceVars() {
   document.documentElement.style.setProperty("--reader-font-size", `${state.preferences.font_size}px`);
   document.documentElement.style.setProperty("--reader-content-width", `${state.preferences.content_width}px`);
@@ -172,8 +188,8 @@ function updateReaderShelfButton() {
 function updateCacheControls() {
   const book = currentReaderBook();
   const disabled = !book || !book.book_key || !state.reader.chapters.length;
-  elements.cacheBookBtn.disabled = disabled;
-  elements.clearCacheBtn.disabled = disabled || !state.cachedChapters.length;
+  elements.cacheBookBtn.disabled = disabled || isPrefetchRunning();
+  elements.clearCacheBtn.disabled = disabled || !state.cachedChapters.length || isPrefetchRunning();
   const total = state.reader.chapters.length || 0;
   elements.cacheSummary.textContent = `已缓存 ${state.cachedChapters.length} / ${total} 章`;
 }
@@ -197,7 +213,8 @@ function updatePrefetchTaskUI() {
   const total = Math.max(task.total_chapters || 0, 1);
   const progress = Math.min(100, Math.round(((task.completed_chapters + task.failed_chapters) / total) * 100));
   elements.cacheProgressBar.style.width = `${progress}%`;
-  elements.cacheTaskStatus.textContent = `${task.message} · ${task.completed_chapters}/${task.total_chapters}`;
+  const suffix = task.failed_chapters ? `，失败 ${task.failed_chapters} 章` : "";
+  elements.cacheTaskStatus.textContent = `${task.message} · ${task.completed_chapters}/${task.total_chapters}${suffix}`;
 }
 
 function renderSummary() {
@@ -236,6 +253,7 @@ async function apiFetch(url, options = {}) {
 }
 
 function resetReader(message = "选择一本支持阅读的书后，就可以在这里查看正文。") {
+  clearPrefetchPolling();
   state.reader = {
     sourceId: null,
     sourceName: "",
@@ -244,6 +262,7 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
     activeChapterIndex: -1,
   };
   state.cachedChapters = [];
+  state.prefetchTask = null;
   elements.readerSection.classList.add("hidden");
   elements.chapterCount.textContent = "0";
   elements.chapterList.className = "chapter-list empty";
@@ -253,8 +272,10 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
   elements.readerContent.className = "reader-content empty";
   elements.readerContent.textContent = "正文区域已准备好。";
   updateReaderShelfButton();
+  updateReaderMetadataForm();
   updateReaderNav();
   updateCacheControls();
+  updatePrefetchTaskUI();
 }
 
 function renderSourceFilterOptions() {
@@ -545,7 +566,9 @@ function renderReaderShell(bookOpenPayload) {
   elements.chapterCount.textContent = String(chapters.length);
   renderChapterList();
   updateReaderShelfButton();
+  updateReaderMetadataForm();
   updateCacheControls();
+  updatePrefetchTaskUI();
   elements.readerStatus.textContent = "章节已加载，点击目录开始阅读。";
   elements.readerContent.className = "reader-content empty";
   elements.readerContent.textContent = "请选择左侧章节。";
@@ -615,6 +638,7 @@ async function refreshShelf() {
   renderShelf();
   renderResults();
   updateReaderShelfButton();
+  updateReaderMetadataForm();
   await refreshSummary();
 }
 
@@ -640,6 +664,61 @@ async function refreshCurrentBookCache(bookKey = currentReaderBook() && currentR
   });
   renderChapterList();
   updateCacheControls();
+}
+
+async function refreshLatestPrefetchTask(bookKey = currentReaderBook() && currentReaderBook().book_key) {
+  if (!bookKey) {
+    clearPrefetchPolling();
+    state.prefetchTask = null;
+    updatePrefetchTaskUI();
+    updateCacheControls();
+    return null;
+  }
+
+  const payload = await apiFetch(`/api/library/books/${bookKey}/prefetch-tasks/latest`, {
+    method: "GET",
+    headers: {},
+  });
+  state.prefetchTask = payload;
+  updatePrefetchTaskUI();
+  updateCacheControls();
+  return payload;
+}
+
+async function pollPrefetchTask(taskId) {
+  try {
+    const payload = await apiFetch(`/api/prefetch-tasks/${taskId}`, {
+      method: "GET",
+      headers: {},
+    });
+    state.prefetchTask = payload;
+    updatePrefetchTaskUI();
+    updateCacheControls();
+
+    if (["pending", "running"].includes(payload.status)) {
+      prefetchPollTimer = window.setTimeout(() => {
+        pollPrefetchTask(taskId);
+      }, 1200);
+      return;
+    }
+
+    clearPrefetchPolling();
+    await refreshCurrentBookCache(payload.book_key);
+    await refreshShelf();
+    if (payload.status === "completed") {
+      setStatus(payload.message, "success");
+    } else if (payload.status === "failed") {
+      setStatus(payload.message, "error");
+    }
+  } catch (error) {
+    clearPrefetchPolling();
+    setStatus(error.message, "error");
+  }
+}
+
+function startPrefetchPolling(taskId) {
+  clearPrefetchPolling();
+  pollPrefetchTask(taskId);
 }
 
 async function loadSampleJson() {
@@ -759,6 +838,10 @@ async function handleShelfRemoval(book) {
     await refreshShelf();
     if (currentReaderBook() && currentReaderBook().book_key === book.book_key) {
       state.cachedChapters = [];
+      state.prefetchTask = null;
+      clearPrefetchPolling();
+      updatePrefetchTaskUI();
+      updateReaderMetadataForm();
       updateCacheControls();
     }
     setStatus("已移出书架", "success");
@@ -804,6 +887,10 @@ async function openBook(book, options = {}) {
     });
     renderReaderShell(payload);
     await refreshCurrentBookCache(payload.book.book_key);
+    const latestTask = await refreshLatestPrefetchTask(payload.book.book_key);
+    if (latestTask && ["pending", "running"].includes(latestTask.status)) {
+      startPrefetchPolling(latestTask.task_id);
+    }
     updateReaderNav();
     setStatus(`已打开《${payload.book.title}》`, "success");
     elements.readerSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -893,9 +980,9 @@ async function cacheCurrentBook() {
   const book = currentReaderBook();
   if (!book || !book.book_key || !state.reader.chapters.length) return;
 
-  setStatus("正在缓存整本书", "loading");
+  setStatus("正在创建后台缓存任务", "loading");
   try {
-    const payload = await apiFetch(`/api/library/books/${book.book_key}/prefetch`, {
+    const payload = await apiFetch(`/api/library/books/${book.book_key}/prefetch-jobs`, {
       method: "POST",
       body: JSON.stringify({
         source_id: state.reader.sourceId,
@@ -903,10 +990,11 @@ async function cacheCurrentBook() {
         chapters: state.reader.chapters,
       }),
     });
-    await refreshCurrentBookCache(book.book_key);
-    await refreshShelf();
-    const failureHint = payload.failed_count ? `，失败 ${payload.failed_count} 章` : "";
-    setStatus(`缓存完成，可离线阅读 ${payload.cached_chapter_count} 章${failureHint}`, "success");
+    state.prefetchTask = payload;
+    updatePrefetchTaskUI();
+    updateCacheControls();
+    startPrefetchPolling(payload.task_id);
+    setStatus(payload.message || "后台缓存任务已开始", "success");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -925,6 +1013,32 @@ async function clearCurrentBookCache() {
     await refreshCurrentBookCache(book.book_key);
     await refreshShelf();
     setStatus("本书缓存已清空", "success");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function saveCurrentBookMetadata() {
+  const book = currentReaderBook();
+  if (!book || !book.book_key) {
+    setStatus("请先打开一本书再设置分类和标签", "error");
+    return;
+  }
+
+  try {
+    if (!isBookInShelf(book)) {
+      await addBookToShelf(book, state.reader.sourceId);
+    }
+    await apiFetch(`/api/library/books/${book.book_key}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        category: elements.bookCategoryInput.value.trim(),
+        tags: parseTags(elements.bookTagsInput.value),
+      }),
+    });
+    await refreshShelf();
+    updateReaderMetadataForm();
+    setStatus("书架分类与标签已保存", "success");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -968,6 +1082,14 @@ function handleFilterChange() {
   renderResults();
 }
 
+function handleShelfFilterChange() {
+  state.shelfFilters = {
+    query: elements.shelfSearchInput.value,
+    category: elements.shelfCategoryFilter.value,
+  };
+  renderShelf();
+}
+
 elements.importBtn.addEventListener("click", importSources);
 elements.loadSampleBtn.addEventListener("click", loadSampleJson);
 elements.searchForm.addEventListener("submit", searchBooks);
@@ -989,6 +1111,7 @@ elements.toggleShelfBtn.addEventListener("click", () => {
 });
 elements.cacheBookBtn.addEventListener("click", cacheCurrentBook);
 elements.clearCacheBtn.addEventListener("click", clearCurrentBookCache);
+elements.saveBookMetaBtn.addEventListener("click", saveCurrentBookMetadata);
 elements.themeSelect.addEventListener("change", handlePreferenceInput);
 elements.fontSizeRange.addEventListener("input", handlePreferenceInput);
 elements.contentWidthRange.addEventListener("input", handlePreferenceInput);
@@ -996,6 +1119,8 @@ elements.lineHeightRange.addEventListener("input", handlePreferenceInput);
 elements.sourceFilter.addEventListener("change", handleFilterChange);
 elements.capabilityFilter.addEventListener("change", handleFilterChange);
 elements.shelfFilter.addEventListener("change", handleFilterChange);
+elements.shelfSearchInput.addEventListener("input", handleShelfFilterChange);
+elements.shelfCategoryFilter.addEventListener("change", handleShelfFilterChange);
 elements.sourceFile.addEventListener("change", async (event) => {
   const [file] = event.target.files || [];
   if (!file) return;

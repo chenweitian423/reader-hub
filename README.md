@@ -6,9 +6,11 @@
 - 启用、停用、删除书源
 - 按关键词并发搜索多个书源
 - 书架收藏与继续阅读
+- 书架分类、标签与书架内搜索
 - 阅读进度自动保存
 - 阅读主题、字号、版心宽度、行距持久化
 - 章节自动缓存与整本离线缓存
+- 后台缓存任务与缓存进度展示
 - 搜索结果按来源、可阅读状态、书架状态筛选
 - 首次启动自动写入内置演示书源
 - 首页统计总览与 favicon
@@ -16,6 +18,7 @@
 - 在线阅读章节正文
 - SQLite 本地持久化
 - Docker / Docker Compose 一键启动
+- Docker 健康检查与环境变量配置
 
 ## 1. 项目结构
 
@@ -60,6 +63,14 @@ chenxiaotian423/reader-hub:latest
 docker compose up -d
 ```
 
+Compose 默认包含这些环境变量：
+
+- `READER_HUB_DATABASE_URL=sqlite:///./data/app.db`
+- `READER_HUB_APP_TITLE=Reader Hub`
+- `READER_HUB_AUTO_SEED_DEMO_SOURCE=true`
+
+镜像使用说明文档已整理在 [DOCKERHUB.md](/Users/sky/Documents/test/DOCKERHUB.md)，便于后续同步到 Docker Hub 仓库说明。
+
 启动后访问：
 
 [http://localhost:8000](http://localhost:8000)
@@ -73,7 +84,24 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-## 3. 快速体验
+## 3. Docker 环境变量
+
+### `READER_HUB_DATABASE_URL`
+
+- 默认值：`sqlite:///./data/app.db`
+- 用途：配置数据库连接字符串
+
+### `READER_HUB_APP_TITLE`
+
+- 默认值：`Reader Hub`
+- 用途：配置后端服务标题
+
+### `READER_HUB_AUTO_SEED_DEMO_SOURCE`
+
+- 默认值：`true`
+- 用途：控制首次启动时是否自动导入内置演示书源
+
+## 4. 快速体验
 
 1. 打开页面后点击“填入示例”
 2. 导入示例书源
@@ -86,7 +114,7 @@ uvicorn app.main:app --reload
 示例内已包含一个本地演示书源，不依赖第三方站点即可试读完整流程。
 现在首次启动时也会自动写入“内置演示书源”，不必手动导入才能开始体验。
 
-## 4. 书源 JSON 格式
+## 5. 书源 JSON 格式
 
 支持导入单个对象或对象数组。
 
@@ -159,7 +187,7 @@ uvicorn app.main:app --reload
 ]
 ```
 
-## 5. 模板变量
+## 6. 模板变量
 
 请求配置中的 `url`、`headers`、`params`、`body` 都支持模板变量，例如：
 
@@ -173,7 +201,7 @@ uvicorn app.main:app --reload
 
 内置演示书源额外支持 `demo://` 协议，方便在无外部依赖时演示完整阅读流程。
 
-## 6. 字段说明
+## 7. 字段说明
 
 ### `search.fields` 常用字段
 
@@ -209,7 +237,7 @@ uvicorn app.main:app --reload
 - `title`
 - `content`
 
-## 7. API 简介
+## 8. API 简介
 
 ### 获取书源
 
@@ -300,6 +328,11 @@ POST /api/books/content
 GET /api/library/books
 ```
 
+返回结果中包含：
+
+- `category`
+- `tags`
+
 ### 加入书架
 
 ```http
@@ -321,6 +354,19 @@ POST /api/library/books
 
 ```http
 DELETE /api/library/books/{book_key}
+```
+
+### 更新书架分类和标签
+
+```http
+PATCH /api/library/books/{book_key}
+```
+
+```json
+{
+  "category": "科幻",
+  "tags": ["太空", "长篇"]
+}
 ```
 
 ### 保存阅读进度
@@ -373,6 +419,24 @@ POST /api/library/books/{book_key}/prefetch
 }
 ```
 
+### 创建后台缓存任务
+
+```http
+POST /api/library/books/{book_key}/prefetch-jobs
+```
+
+### 获取最近一次后台缓存任务
+
+```http
+GET /api/library/books/{book_key}/prefetch-tasks/latest
+```
+
+### 查询后台缓存任务状态
+
+```http
+GET /api/prefetch-tasks/{task_id}
+```
+
 ### 清空本书缓存
 
 ```http
@@ -400,7 +464,7 @@ PUT /api/reader/preferences
 }
 ```
 
-## 8. 默认示例
+## 9. 默认示例
 
 页面中的“填入示例”会加载三个示例书源：
 
@@ -410,7 +474,7 @@ PUT /api/reader/preferences
 
 其中只有“内置演示书源”默认配置了章节和正文阅读流程，另外两个主要用于公共搜索演示。
 
-## 9. 推送 Git 与自动发布 Docker Hub
+## 10. 推送 Git 与自动发布 Docker Hub
 
 当前仓库已经包含 GitHub Actions 工作流：
 

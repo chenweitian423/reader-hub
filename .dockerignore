@@ -5,4 +5,4 @@ __pycache__/
 .Python
 .venv/
 venv/
-data/app.db
+data/*.db

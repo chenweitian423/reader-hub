@@ -4,6 +4,16 @@ services:
     container_name: reader-hub
     ports:
       - "8000:8000"
+    environment:
+      READER_HUB_DATABASE_URL: sqlite:///./data/app.db
+      READER_HUB_APP_TITLE: Reader Hub
+      READER_HUB_AUTO_SEED_DEMO_SOURCE: "true"
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped

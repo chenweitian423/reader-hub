@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -54,6 +55,13 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 SAMPLE_SOURCES_PATH = STATIC_DIR / "sample_sources.json"
 BACKGROUND_PREFETCH_TASKS: set[asyncio.Task[Any]] = set()
+APP_TITLE = os.getenv("READER_HUB_APP_TITLE", "Reader Hub").strip() or "Reader Hub"
+AUTO_SEED_DEMO_SOURCE = os.getenv("READER_HUB_AUTO_SEED_DEMO_SOURCE", "true").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 
 def ensure_demo_source_seeded() -> None:
@@ -87,11 +95,12 @@ def ensure_demo_source_seeded() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    ensure_demo_source_seeded()
+    if AUTO_SEED_DEMO_SOURCE:
+        ensure_demo_source_seeded()
     yield
 
 
-app = FastAPI(title="Reader Hub", version="1.3.0", lifespan=lifespan)
+app = FastAPI(title=APP_TITLE, version="1.4.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -600,6 +609,19 @@ async def list_cached_chapters(book_key: str, db: Session = Depends(get_db)) -> 
 @app.get("/api/prefetch-tasks/{task_id}", response_model=PrefetchTaskRead)
 async def get_prefetch_task(task_id: str, db: Session = Depends(get_db)) -> PrefetchTaskRead:
     task = get_prefetch_task_or_404(task_id, db)
+    return serialize_prefetch_task(task)
+
+
+@app.get("/api/library/books/{book_key}/prefetch-tasks/latest", response_model=Optional[PrefetchTaskRead])
+async def get_latest_prefetch_task(book_key: str, db: Session = Depends(get_db)) -> Optional[PrefetchTaskRead]:
+    task = (
+        db.query(PrefetchTask)
+        .filter(PrefetchTask.book_key == book_key)
+        .order_by(PrefetchTask.created_at.desc())
+        .first()
+    )
+    if not task:
+        return None
     return serialize_prefetch_task(task)
 
 
