@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.12.0`
+当前版本：`1.12.1`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -77,7 +77,7 @@ docker compose up -d
 如果你希望固定到某个发布版本，可以先复制 [`.env.example`](/Users/sky/Documents/test/.env.example) 为 `.env`，然后把：
 
 ```text
-READER_HUB_IMAGE_TAG=1.12.0
+READER_HUB_IMAGE_TAG=1.12.1
 ```
 
 改成你要部署的镜像版本。
@@ -111,7 +111,7 @@ uvicorn app.main:app --reload
 
 - 默认值：`latest`
 - 用途：指定 `docker-compose.yml` 拉取的镜像版本
-- 示例：`1.12.0`
+- 示例：`1.12.1`
 
 ### `READER_HUB_DATABASE_URL`
 
@@ -141,7 +141,7 @@ uvicorn app.main:app --reload
 9. 搜索后首页会自动记录最近搜索词，并在“最近更新”“相关推荐”里补充更像书城的发现内容
 10. 打开书籍后会进入独立阅读页，正文区域更大，也可以手动收起侧栏进一步放大阅读区
 11. 阅读页现在支持目录抽屉、底部翻页条，以及随滚动自动收起的顶部工具栏
-12. 导入书源时会兼容一类常见旧格式书源，包括常见 JSON、HTML/CSS、XPath 搜索规则；不兼容规则也会返回清晰提示
+12. 导入书源时会兼容一类常见旧格式书源，包括常见 JSON、HTML/CSS、XPath 搜索规则；更复杂规则现在也可先导入，若暂不支持会在搜索阶段单独提示
 
 示例内已包含一个本地演示书源，不依赖第三方站点即可试读完整流程。
 现在首次启动时也会自动写入“内置演示书源”，不必手动导入才能开始体验。
@@ -540,7 +540,7 @@ PUT /api/reader/preferences
 工作流会读取 [VERSION](/Users/sky/Documents/test/VERSION) 文件，并自动推送这些镜像 tag：
 
 - `latest`
-- `1.12.0`
+- `1.12.1`
 - `1.12`
 - `sha-<commit>`
 

@@ -116,7 +116,9 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
     if not isinstance(search_rule, dict):
         raise ValueError(f"旧格式书源 `{name}` 缺少 `ruleSearch`，暂时无法导入")
 
-    request_meta = normalize_legacy_url_template(item.get("searchUrl"))
+    search_url = str(item.get("searchUrl", "")).strip()
+    if not search_url:
+        raise ValueError(f"旧格式书源 `{name}` 缺少 `searchUrl`，无法导入")
     if not str(search_rule.get("bookList", "")).strip():
         raise ValueError(f"旧格式书源 `{name}` 的 `ruleSearch.bookList` 缺失，无法导入")
     if not str(search_rule.get("name", "")).strip():
@@ -135,11 +137,11 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
         "description": description,
         "enabled": bool(item.get("enabled", True)),
         "search": {
-            "method": request_meta["method"],
-            "url": request_meta["url"],
-            "headers": request_meta["headers"],
-            "params": request_meta["params"],
-            "body": request_meta["body"],
+            "method": "GET",
+            "url": "legacy://search",
+            "headers": {},
+            "params": {},
+            "body": {},
             "result_path": "",
             "fields": {"title": "title"},
             "transforms": {},
@@ -147,7 +149,7 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
         },
         "legacy": {
             "format": "legado",
-            "search_url": item.get("searchUrl", ""),
+            "search_url": search_url,
             "rule_search": search_rule,
             "raw": item,
         },
