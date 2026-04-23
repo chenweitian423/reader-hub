@@ -1,6 +1,6 @@
 services:
   reader-hub:
-    build: .
+    image: chenxiaotian423/reader-hub:latest
     container_name: reader-hub
     ports:
       - "8000:8000"

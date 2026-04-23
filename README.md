@@ -48,6 +48,18 @@
 docker compose up --build
 ```
 
+当前仓库内的 [`docker-compose.yml`](/Users/sky/Documents/test/docker-compose.yml) 已改为直接使用已发布镜像：
+
+```text
+chenxiaotian423/reader-hub:latest
+```
+
+因此在部署机器上通常直接运行即可：
+
+```bash
+docker compose up -d
+```
+
 启动后访问：
 
 [http://localhost:8000](http://localhost:8000)
