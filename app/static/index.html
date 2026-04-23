@@ -449,10 +449,30 @@
               你可以直接把本机书籍导入书架，也可以让同一网络下的设备调用上传接口把书推送进来。
             </p>
             <div class="shelf-upload-panel">
-              <div class="inline-actions">
-                <label class="upload-btn" for="shelf-upload-file">选择书籍文件</label>
-                <input id="shelf-upload-file" type="file" accept=".txt,.md,.epub" multiple />
-                <button id="shelf-upload-btn" type="button">导入到书架</button>
+              <input id="shelf-upload-file" type="file" accept=".txt,.md,.epub" multiple />
+              <input id="shelf-upload-directory" type="file" accept=".txt,.md,.epub" webkitdirectory directory multiple />
+              <div
+                id="shelf-upload-dropzone"
+                class="shelf-upload-dropzone"
+                role="button"
+                tabindex="0"
+                aria-label="拖动书籍文件或文件夹到这里，也可以点击选择"
+              >
+                <div class="shelf-upload-dropzone-copy">
+                  <p class="eyebrow">本地导入</p>
+                  <h3>拖动文件或整个文件夹到这里</h3>
+                  <p class="muted">
+                    支持直接拖入 TXT、MD、EPUB，也支持点击按钮选择零散文件或整目录上传。
+                  </p>
+                </div>
+                <div class="shelf-upload-actions">
+                  <label class="upload-btn" for="shelf-upload-file">选择书籍文件</label>
+                  <label class="upload-btn upload-btn-secondary" for="shelf-upload-directory">选择整个目录</label>
+                  <button id="shelf-upload-clear-btn" class="ghost-btn" type="button">清空待上传</button>
+                </div>
+              </div>
+              <div id="shelf-upload-selection" class="shelf-upload-selection empty">
+                还没有选择文件。你可以点“选择整个目录”，也可以直接拖动文件到上面的区域。
               </div>
               <div class="meta-grid">
                 <label class="setting-item">
@@ -464,10 +484,13 @@
                   <input id="shelf-upload-tags" type="text" placeholder="可选，用逗号分隔，例如：本地, 上传" />
                 </label>
               </div>
-              <p class="hint">
-                同网络上传接口：
-                <code id="upload-api-endpoint">/api/library/uploads</code>
-              </p>
+              <div class="shelf-upload-footer">
+                <p class="hint">
+                  同网络上传接口：
+                  <code id="upload-api-endpoint">/api/library/uploads</code>
+                </p>
+                <button id="shelf-upload-btn" type="button">导入到书架</button>
+              </div>
             </div>
             <p class="hint">收藏的书和阅读进度都会保存在这里，下次打开可继续阅读。</p>
             <div class="shelf-tools">

@@ -8,6 +8,7 @@ const state = {
     lastBrowsePage: "search",
     selectedResultKey: null,
     recentSearches: [],
+    pendingUploadFiles: [],
     readerFocusMode: false,
     readerSidebarCollapsed: false,
     readerDrawerOpen: false,
@@ -54,6 +55,7 @@ let preferenceSaveTimer = null;
 let prefetchPollTimer = null;
 let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
+const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["txt", "md", "epub"]);
 
 const elements = {
   sourceJson: document.querySelector("#source-json"),
@@ -67,8 +69,12 @@ const elements = {
   shelfSearchInput: document.querySelector("#shelf-search-input"),
   shelfCategoryFilter: document.querySelector("#shelf-category-filter"),
   shelfUploadFile: document.querySelector("#shelf-upload-file"),
+  shelfUploadDirectory: document.querySelector("#shelf-upload-directory"),
   shelfUploadCategory: document.querySelector("#shelf-upload-category"),
   shelfUploadTags: document.querySelector("#shelf-upload-tags"),
+  shelfUploadDropzone: document.querySelector("#shelf-upload-dropzone"),
+  shelfUploadSelection: document.querySelector("#shelf-upload-selection"),
+  shelfUploadClearBtn: document.querySelector("#shelf-upload-clear-btn"),
   shelfUploadBtn: document.querySelector("#shelf-upload-btn"),
   uploadApiEndpoint: document.querySelector("#upload-api-endpoint"),
   searchForm: document.querySelector("#search-form"),
@@ -232,6 +238,157 @@ function parseTags(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function formatFileSize(size) {
+  if (!Number.isFinite(size) || size <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  const digits = value >= 100 || index === 0 ? 0 : 1;
+  return `${value.toFixed(digits)} ${units[index]}`;
+}
+
+function getUploadRelativePath(file) {
+  return file.readerHubRelativePath || file.webkitRelativePath || file.name;
+}
+
+function getUploadFileKey(file) {
+  return [getUploadRelativePath(file), file.size, file.lastModified].join("::");
+}
+
+function isSupportedUploadFile(file) {
+  const extension = String(file.name || "")
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  return Boolean(extension && SUPPORTED_UPLOAD_EXTENSIONS.has(extension));
+}
+
+function renderPendingUploadFiles() {
+  const files = state.ui.pendingUploadFiles;
+  elements.shelfUploadBtn.disabled = !files.length;
+  elements.shelfUploadClearBtn.disabled = !files.length;
+
+  if (!files.length) {
+    elements.shelfUploadSelection.className = "shelf-upload-selection empty";
+    elements.shelfUploadSelection.textContent =
+      "还没有选择文件。你可以点“选择整个目录”，也可以直接拖动文件到上面的区域。";
+    return;
+  }
+
+  const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+  const roots = new Set(
+    files
+      .map((file) => getUploadRelativePath(file).split("/")[0])
+      .filter(Boolean),
+  );
+
+  elements.shelfUploadSelection.className = "shelf-upload-selection";
+  elements.shelfUploadSelection.innerHTML = `
+    <div class="shelf-upload-selection-head">
+      <strong>已选 ${files.length} 个文件</strong>
+      <span class="muted">来自 ${roots.size} 个目录或来源 · ${formatFileSize(totalSize)}</span>
+    </div>
+  `;
+
+  const list = document.createElement("div");
+  list.className = "shelf-upload-file-list";
+  files.forEach((file) => {
+    const item = document.createElement("div");
+    item.className = "shelf-upload-file-item";
+    item.innerHTML = `
+      <strong>${file.name}</strong>
+      <span class="muted">${getUploadRelativePath(file)}</span>
+      <span class="badge">${formatFileSize(file.size || 0)}</span>
+    `;
+    list.appendChild(item);
+  });
+  elements.shelfUploadSelection.appendChild(list);
+}
+
+function mergePendingUploadFiles(files) {
+  const accepted = [];
+  let ignoredCount = 0;
+
+  files.forEach((file) => {
+    if (isSupportedUploadFile(file)) {
+      accepted.push(file);
+    } else {
+      ignoredCount += 1;
+    }
+  });
+
+  const fileMap = new Map(
+    state.ui.pendingUploadFiles.map((file) => [getUploadFileKey(file), file]),
+  );
+  accepted.forEach((file) => {
+    fileMap.set(getUploadFileKey(file), file);
+  });
+  state.ui.pendingUploadFiles = Array.from(fileMap.values()).sort((left, right) =>
+    getUploadRelativePath(left).localeCompare(getUploadRelativePath(right), "zh-CN"),
+  );
+  renderPendingUploadFiles();
+
+  if (accepted.length) {
+    setStatus(`已加入 ${accepted.length} 个待上传文件`, "idle");
+  }
+  if (ignoredCount) {
+    setStatus(`已忽略 ${ignoredCount} 个不支持的文件`, "error");
+  }
+}
+
+function clearPendingUploadFiles() {
+  state.ui.pendingUploadFiles = [];
+  elements.shelfUploadFile.value = "";
+  elements.shelfUploadDirectory.value = "";
+  renderPendingUploadFiles();
+}
+
+async function readDirectoryEntry(entry, pathPrefix = "") {
+  if (!entry) return [];
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      entry.file((file) => {
+        file.readerHubRelativePath = `${pathPrefix}${file.name}`;
+        resolve([file]);
+      });
+    });
+  }
+
+  if (!entry.isDirectory) return [];
+
+  const reader = entry.createReader();
+  const entries = [];
+  while (true) {
+    const batch = await new Promise((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    });
+    if (!batch.length) break;
+    entries.push(...batch);
+  }
+
+  const nestedFiles = await Promise.all(
+    entries.map((child) => readDirectoryEntry(child, `${pathPrefix}${entry.name}/`)),
+  );
+  return nestedFiles.flat();
+}
+
+async function extractDroppedUploadFiles(dataTransfer) {
+  const items = Array.from(dataTransfer.items || []);
+  if (items.length && items.some((item) => typeof item.webkitGetAsEntry === "function")) {
+    const files = await Promise.all(
+      items
+        .filter((item) => item.kind === "file")
+        .map((item) => readDirectoryEntry(item.webkitGetAsEntry())),
+    );
+    return files.flat();
+  }
+  return Array.from(dataTransfer.files || []);
 }
 
 function loadRecentSearches() {
@@ -1534,7 +1691,7 @@ async function importSources() {
 }
 
 async function uploadBooksToShelf() {
-  const files = Array.from(elements.shelfUploadFile.files || []);
+  const files = state.ui.pendingUploadFiles;
   if (!files.length) {
     setStatus("请先选择 TXT、MD 或 EPUB 文件", "error");
     return;
@@ -1575,11 +1732,12 @@ async function uploadBooksToShelf() {
         : `已导入《${lead?.title || files[0].name}》到书架`,
       "success",
     );
-    elements.shelfUploadFile.value = "";
+    clearPendingUploadFiles();
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
     elements.shelfUploadBtn.disabled = false;
+    renderPendingUploadFiles();
   }
 }
 
@@ -2008,9 +2166,25 @@ function runQuickSearch(keyword) {
   elements.searchForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 }
 
+function handleShelfUploadDragState(active) {
+  elements.shelfUploadDropzone.classList.toggle("drag-active", Boolean(active));
+}
+
+async function handleDroppedUploadFiles(event) {
+  event.preventDefault();
+  handleShelfUploadDragState(false);
+  const files = await extractDroppedUploadFiles(event.dataTransfer);
+  mergePendingUploadFiles(files);
+}
+
 loadRecentSearches();
+renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
 elements.shelfUploadBtn.addEventListener("click", uploadBooksToShelf);
+elements.shelfUploadClearBtn.addEventListener("click", () => {
+  clearPendingUploadFiles();
+  setStatus("已清空待上传文件", "idle");
+});
 elements.loadSampleBtn.addEventListener("click", loadSampleJson);
 elements.backupExportBtn.addEventListener("click", exportBackup);
 elements.backupImportBtn.addEventListener("click", importBackup);
@@ -2084,6 +2258,45 @@ elements.capabilityFilter.addEventListener("change", handleFilterChange);
 elements.shelfFilter.addEventListener("change", handleFilterChange);
 elements.shelfSearchInput.addEventListener("input", handleShelfFilterChange);
 elements.shelfCategoryFilter.addEventListener("change", handleShelfFilterChange);
+elements.shelfUploadFile.addEventListener("change", async (event) => {
+  await Promise.resolve();
+  mergePendingUploadFiles(Array.from(event.target.files || []));
+  event.target.value = "";
+});
+elements.shelfUploadDirectory.addEventListener("change", async (event) => {
+  await Promise.resolve();
+  mergePendingUploadFiles(Array.from(event.target.files || []));
+  event.target.value = "";
+});
+elements.shelfUploadDropzone.addEventListener("click", (event) => {
+  if (event.target.closest("label, button")) return;
+  elements.shelfUploadFile.click();
+});
+elements.shelfUploadDropzone.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  elements.shelfUploadFile.click();
+});
+["dragenter", "dragover"].forEach((eventName) => {
+  elements.shelfUploadDropzone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    handleShelfUploadDragState(true);
+  });
+});
+elements.shelfUploadDropzone.addEventListener("dragleave", (event) => {
+  if (!elements.shelfUploadDropzone.contains(event.relatedTarget)) {
+    handleShelfUploadDragState(false);
+  }
+});
+elements.shelfUploadDropzone.addEventListener("dragend", () => {
+  handleShelfUploadDragState(false);
+});
+elements.shelfUploadDropzone.addEventListener("drop", (event) => {
+  handleDroppedUploadFiles(event).catch((error) => {
+    handleShelfUploadDragState(false);
+    setStatus(error.message || "拖动文件读取失败", "error");
+  });
+});
 elements.sourceFile.addEventListener("change", async (event) => {
   const [file] = event.target.files || [];
   if (!file) return;

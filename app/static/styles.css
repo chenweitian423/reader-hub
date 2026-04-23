@@ -447,6 +447,11 @@ button:disabled {
   display: none;
 }
 
+#shelf-upload-file,
+#shelf-upload-directory {
+  display: none;
+}
+
 .badge,
 .status-pill,
 .source-enabled,
@@ -895,6 +900,101 @@ button:disabled {
   border-radius: 18px;
   border: 1px solid rgba(89, 62, 32, 0.08);
   background: rgba(255, 255, 255, 0.62);
+}
+
+.shelf-upload-dropzone {
+  border-radius: 24px;
+  border: 1.5px dashed rgba(194, 91, 47, 0.34);
+  background:
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(255, 252, 248, 0.92), rgba(255, 247, 239, 0.8));
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.shelf-upload-dropzone:hover,
+.shelf-upload-dropzone.drag-active {
+  border-color: rgba(194, 91, 47, 0.78);
+  transform: translateY(-1px);
+  box-shadow: 0 20px 44px rgba(94, 49, 18, 0.12);
+}
+
+.shelf-upload-dropzone:focus-visible {
+  outline: 3px solid rgba(194, 91, 47, 0.22);
+  outline-offset: 3px;
+}
+
+.shelf-upload-dropzone-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.shelf-upload-dropzone-copy h3 {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.shelf-upload-actions,
+.shelf-upload-footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.upload-btn-secondary {
+  background: rgba(194, 91, 47, 0.08);
+  color: var(--accent-deep);
+  border: 1px solid rgba(194, 91, 47, 0.18);
+}
+
+.upload-btn-secondary:hover {
+  background: rgba(194, 91, 47, 0.16);
+  color: var(--accent-deep);
+}
+
+.shelf-upload-selection {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 253, 250, 0.78);
+  border: 1px solid rgba(89, 62, 32, 0.1);
+}
+
+.shelf-upload-selection-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.shelf-upload-file-list {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.shelf-upload-file-item {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(89, 62, 32, 0.08);
+}
+
+.shelf-upload-file-item strong,
+.shelf-upload-file-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .shelf-upload-panel code {
@@ -1793,7 +1893,10 @@ button:disabled {
   .inline-actions,
   .source-actions,
   .result-actions,
-  .reader-nav {
+  .reader-nav,
+  .shelf-upload-actions,
+  .shelf-upload-footer,
+  .shelf-upload-selection-head {
     flex-wrap: wrap;
   }
 
