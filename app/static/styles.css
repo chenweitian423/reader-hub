@@ -467,6 +467,117 @@ button:disabled {
   color: var(--ink);
 }
 
+.home-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 18px;
+}
+
+.spotlight-card,
+.continue-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  background: rgba(255, 251, 245, 0.86);
+  padding: 24px;
+}
+
+.spotlight-card {
+  background:
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.14), transparent 26%),
+    linear-gradient(180deg, rgba(255, 248, 240, 0.94), rgba(255, 253, 249, 0.88));
+}
+
+.spotlight-body {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.spotlight-cover-wrap {
+  width: 148px;
+  height: 208px;
+  border-radius: 24px;
+  overflow: hidden;
+  background:
+    linear-gradient(160deg, rgba(194, 91, 47, 0.2), rgba(36, 22, 13, 0.1)),
+    #f0decc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spotlight-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.spotlight-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.spotlight-copy h3 {
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.spotlight-source {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.spotlight-copy p {
+  line-height: 1.75;
+}
+
+.spotlight-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.continue-card h3 {
+  font-size: 24px;
+}
+
+.continue-list {
+  display: grid;
+  gap: 12px;
+}
+
+.continue-item {
+  width: 100%;
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.1), transparent 28%),
+    rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  justify-items: start;
+}
+
+.continue-item strong {
+  font-size: 18px;
+}
+
+.continue-item-source {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -885,6 +996,7 @@ button:disabled {
 }
 
 @media (max-width: 1180px) {
+  .home-panels,
   .reader-shell,
   .settings-grid,
   .stats-grid {
@@ -905,6 +1017,16 @@ button:disabled {
   .reader-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .spotlight-body {
+    grid-template-columns: 1fr;
+  }
+
+  .spotlight-cover-wrap {
+    width: 100%;
+    max-width: 180px;
+    height: 240px;
   }
 
   .search-bar {

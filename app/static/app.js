@@ -115,6 +115,14 @@ const elements = {
   menuButtons: Array.from(document.querySelectorAll(".menu-btn")),
   pagePanels: Array.from(document.querySelectorAll(".page-panel")),
   keywordChips: Array.from(document.querySelectorAll(".keyword-chip")),
+  homeSpotlightCover: document.querySelector("#home-spotlight-cover"),
+  homeSpotlightSource: document.querySelector("#home-spotlight-source"),
+  homeSpotlightTitle: document.querySelector("#home-spotlight-title"),
+  homeSpotlightAuthor: document.querySelector("#home-spotlight-author"),
+  homeSpotlightIntro: document.querySelector("#home-spotlight-intro"),
+  homeSpotlightPrimary: document.querySelector("#home-spotlight-primary"),
+  homeSpotlightSecondary: document.querySelector("#home-spotlight-secondary"),
+  homeContinueList: document.querySelector("#home-continue-list"),
 };
 
 function setStatus(text, type = "idle") {
@@ -242,6 +250,143 @@ function renderSummary() {
   elements.summaryCacheCount.textContent = String(state.summary.cached_chapter_count);
 }
 
+function getHomeSpotlightBook() {
+  if (state.reader.book) {
+    return {
+      kind: "reading",
+      book: state.reader.book,
+      sourceName: state.reader.sourceName || state.reader.book.source_name || "",
+    };
+  }
+  if (state.results.length) {
+    return {
+      kind: "result",
+      book: state.results[0],
+      sourceName: state.results[0].source_name || "",
+    };
+  }
+  if (state.shelfBooks.length) {
+    return {
+      kind: "shelf",
+      book: state.shelfBooks[0].book,
+      sourceName: state.shelfBooks[0].source_name || "",
+      shelfBook: state.shelfBooks[0],
+    };
+  }
+  return null;
+}
+
+function bindHomeSpotlightButtons(payload) {
+  elements.homeSpotlightPrimary.replaceWith(elements.homeSpotlightPrimary.cloneNode(true));
+  elements.homeSpotlightSecondary.replaceWith(elements.homeSpotlightSecondary.cloneNode(true));
+  elements.homeSpotlightPrimary = document.querySelector("#home-spotlight-primary");
+  elements.homeSpotlightSecondary = document.querySelector("#home-spotlight-secondary");
+
+  if (!payload) {
+    elements.homeSpotlightPrimary.textContent = "去导入书源";
+    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightPrimary.addEventListener("click", () => setActivePage("sources"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    return;
+  }
+
+  if (payload.kind === "reading") {
+    elements.homeSpotlightPrimary.textContent = "继续阅读";
+    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightPrimary.addEventListener("click", () => {
+      elements.readerSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    return;
+  }
+
+  if (payload.kind === "shelf" && payload.shelfBook) {
+    elements.homeSpotlightPrimary.textContent = "继续阅读";
+    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightPrimary.addEventListener("click", () => continueShelfBook(payload.shelfBook));
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    return;
+  }
+
+  elements.homeSpotlightPrimary.textContent = isReadableSource(payload.book.source_id) ? "打开阅读" : "加入书架";
+  elements.homeSpotlightSecondary.textContent = "管理书源";
+  elements.homeSpotlightPrimary.addEventListener("click", () => {
+    if (isReadableSource(payload.book.source_id)) {
+      openBook(payload.book);
+    } else {
+      toggleShelfBook(payload.book);
+    }
+  });
+  elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("sources"));
+}
+
+function renderHomeSpotlight() {
+  const payload = getHomeSpotlightBook();
+  if (!payload) {
+    elements.homeSpotlightSource.textContent = "欢迎来到 Reader Hub";
+    elements.homeSpotlightTitle.textContent = "先搜索一本你想看的书";
+    elements.homeSpotlightAuthor.textContent = "首页会把当前最值得打开的一本书放在这里。";
+    elements.homeSpotlightIntro.textContent =
+      "你可以先导入示例书源，再搜索“月”或“便利店”，这里会自动切换成搜索结果或当前阅读书籍的展示卡。";
+    elements.homeSpotlightCover.style.display = "none";
+    elements.homeSpotlightCover.removeAttribute("src");
+    bindHomeSpotlightButtons(null);
+    return;
+  }
+
+  const book = payload.book;
+  elements.homeSpotlightSource.textContent =
+    payload.kind === "reading" ? `正在阅读 · ${payload.sourceName}` : payload.sourceName || "推荐书籍";
+  elements.homeSpotlightTitle.textContent = book.title || "未命名书籍";
+  elements.homeSpotlightAuthor.textContent = book.author ? `作者：${book.author}` : "作者信息待补充";
+  elements.homeSpotlightIntro.textContent = book.intro || "这本书还没有简介，可以直接打开看看内容。";
+  if (book.cover) {
+    elements.homeSpotlightCover.src = book.cover;
+    elements.homeSpotlightCover.style.display = "block";
+  } else {
+    elements.homeSpotlightCover.removeAttribute("src");
+    elements.homeSpotlightCover.style.display = "none";
+  }
+  bindHomeSpotlightButtons(payload);
+}
+
+function renderHomeContinue() {
+  const books = [...state.shelfBooks]
+    .sort((a, b) => {
+      const left = a.last_read_at || a.added_at;
+      const right = b.last_read_at || b.added_at;
+      return new Date(right).getTime() - new Date(left).getTime();
+    })
+    .slice(0, 3);
+
+  if (!books.length) {
+    elements.homeContinueList.className = "continue-list empty";
+    elements.homeContinueList.textContent = "书架里还没有可继续阅读的书，先搜一本到书架吧。";
+    return;
+  }
+
+  elements.homeContinueList.className = "continue-list";
+  elements.homeContinueList.innerHTML = "";
+
+  books.forEach((book) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "continue-item";
+    item.innerHTML = `
+      <span class="continue-item-source">${book.source_name}</span>
+      <strong>${book.title || "未命名书籍"}</strong>
+      <span class="muted">${book.last_chapter_title || "还没有阅读进度"}</span>
+    `;
+    item.addEventListener("click", () => continueShelfBook(book));
+    elements.homeContinueList.appendChild(item);
+  });
+}
+
+function renderHomeSurface() {
+  renderHomeSpotlight();
+  renderHomeContinue();
+}
+
 function renderAppMeta() {
   elements.appTitle.textContent = state.appMeta.title;
   elements.appVersionBadge.textContent = `v${state.appMeta.version}`;
@@ -310,6 +455,7 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
   updateReaderNav();
   updateCacheControls();
   updatePrefetchTaskUI();
+  renderHomeSurface();
 }
 
 function renderSourceFilterOptions() {
@@ -357,6 +503,7 @@ function renderSources() {
     deleteBtn.addEventListener("click", () => deleteSource(source));
     elements.sourceList.appendChild(fragment);
   });
+  renderHomeSurface();
 }
 
 function renderShelfCategoryOptions() {
@@ -395,6 +542,7 @@ function renderShelf() {
   elements.shelfCount.textContent = String(state.shelfBooks.length);
   renderShelfCategoryOptions();
   const visibleBooks = getFilteredShelfBooks();
+  renderHomeContinue();
 
   if (!visibleBooks.length) {
     elements.shelfList.className = "shelf-list empty";
@@ -510,6 +658,7 @@ function renderResults(items = state.results) {
     elements.results.textContent = state.results.length
       ? "当前筛选条件下没有结果，换个过滤条件试试。"
       : "没有搜索到结果，换个关键词或调整书源试试。";
+    renderHomeSpotlight();
     return;
   }
 
@@ -569,6 +718,7 @@ function renderResults(items = state.results) {
     collectBtn.addEventListener("click", () => toggleShelfBook(item));
     elements.results.appendChild(fragment);
   });
+  renderHomeSpotlight();
 }
 
 function renderReaderShell(bookOpenPayload) {
@@ -603,6 +753,7 @@ function renderReaderShell(bookOpenPayload) {
   updateReaderMetadataForm();
   updateCacheControls();
   updatePrefetchTaskUI();
+  renderHomeSurface();
   elements.readerStatus.textContent = "章节已加载，点击目录开始阅读。";
   elements.readerContent.className = "reader-content empty";
   elements.readerContent.textContent = "请选择左侧章节。";
