@@ -179,6 +179,7 @@ def build_uploaded_book_payload(book_id: str, payload: dict[str, Any]) -> dict[s
     chapters = payload.get("chapters", [])
     return {
         "id": book_id,
+        "book_id": book_id,
         "title": payload.get("title", ""),
         "author": payload.get("author", ""),
         "cover": payload.get("cover", ""),
