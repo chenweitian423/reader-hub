@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reader Hub</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="panel sidebar">
+        <div>
+          <p class="eyebrow">Reader Hub</p>
+          <h1>可导入书源的读书软件</h1>
+          <p class="muted">
+            支持 JSON 书源、聚合搜索、书架收藏、阅读进度保存与在线阅读。
+          </p>
+        </div>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>导入书源</h2>
+            <button id="load-sample-btn" class="ghost-btn" type="button">
+              填入示例
+            </button>
+          </div>
+          <p class="hint">
+            支持单个对象或数组。示例中已包含一个可直接试读的内置演示书源。
+          </p>
+          <textarea
+            id="source-json"
+            placeholder='例如: [{"name":"示例书源","search":{"url":"https://example.com?q={keyword}","fields":{"title":"title"}}}]'
+          ></textarea>
+          <div class="inline-actions">
+            <label class="upload-btn" for="source-file">选择 JSON 文件</label>
+            <input id="source-file" type="file" accept=".json,application/json" />
+            <button id="import-btn" type="button">导入书源</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>已导入书源</h2>
+            <span id="source-count" class="badge">0</span>
+          </div>
+          <div id="source-list" class="source-list empty">
+            暂无书源，请先导入。
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>我的书架</h2>
+            <span id="shelf-count" class="badge">0</span>
+          </div>
+          <p class="hint">收藏的书和阅读进度都会保存在这里，下次打开可继续阅读。</p>
+          <div class="shelf-tools">
+            <input id="shelf-search-input" type="text" placeholder="搜索书架中的书名、作者、标签" />
+            <select id="shelf-category-filter">
+              <option value="all">全部分类</option>
+            </select>
+          </div>
+          <div id="shelf-list" class="shelf-list empty">
+            书架还是空的，搜索到喜欢的书后加入书架吧。
+          </div>
+        </section>
+      </aside>
+
+      <main class="panel content">
+        <section class="hero">
+          <div>
+            <p class="eyebrow">聚合搜索</p>
+            <h2>在多个书源里一次检索你想看的书</h2>
+          </div>
+          <form id="search-form" class="search-bar">
+            <input
+              id="keyword-input"
+              type="text"
+              autocomplete="off"
+              placeholder="输入书名、作者或关键词"
+            />
+            <button type="submit">开始搜索</button>
+          </form>
+        </section>
+
+        <section class="stats-grid">
+          <article class="stat-card">
+            <p class="eyebrow">书源</p>
+            <h3 id="summary-source-count">0</h3>
+            <p id="summary-source-meta" class="muted">已启用 0 个</p>
+          </article>
+          <article class="stat-card">
+            <p class="eyebrow">书架</p>
+            <h3 id="summary-shelf-count">0</h3>
+            <p id="summary-reading-meta" class="muted">进行中 0 本</p>
+          </article>
+          <article class="stat-card">
+            <p class="eyebrow">缓存</p>
+            <h3 id="summary-cache-count">0</h3>
+            <p class="muted">已缓存章节</p>
+          </article>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>搜索状态</h2>
+            <span id="status-pill" class="status-pill idle">等待操作</span>
+          </div>
+          <div id="source-status" class="source-status muted">
+            导入书源后即可搜索。
+          </div>
+        </section>
+
+        <section class="results-section">
+          <div class="section-head">
+            <h2>搜索结果</h2>
+            <span id="result-count" class="badge">0</span>
+          </div>
+          <div class="filters-bar">
+            <label class="filter-item">
+              <span>来源</span>
+              <select id="source-filter">
+                <option value="all">全部来源</option>
+              </select>
+            </label>
+            <label class="filter-item">
+              <span>能力</span>
+              <select id="capability-filter">
+                <option value="all">全部结果</option>
+                <option value="readable">只看可阅读</option>
+                <option value="search_only">只看仅搜索</option>
+              </select>
+            </label>
+            <label class="filter-item">
+              <span>书架</span>
+              <select id="shelf-filter">
+                <option value="all">全部状态</option>
+                <option value="in_shelf">已在书架</option>
+                <option value="not_in_shelf">未加入书架</option>
+              </select>
+            </label>
+          </div>
+          <div id="results" class="results empty">
+            还没有结果，先试试导入示例书源并搜索“月”或“便利店”。
+          </div>
+        </section>
+
+        <section id="reader-section" class="reader-section hidden" data-reader-theme="warm">
+          <div class="reader-shell">
+            <div class="reader-sidebar">
+              <div class="reader-book-card">
+                <img id="reader-book-cover" class="reader-book-cover" alt="书籍封面" />
+                <div>
+                  <p id="reader-source-name" class="eyebrow">阅读器</p>
+                  <h2 id="reader-book-title">未选择书籍</h2>
+                  <p id="reader-book-author" class="muted"></p>
+                  <p id="reader-book-meta" class="reader-book-meta muted"></p>
+                  <p id="reader-book-intro" class="reader-book-intro muted"></p>
+                </div>
+              </div>
+
+              <section class="card-inline shelf-meta-editor">
+                <div class="section-head compact">
+                  <h2>书架信息</h2>
+                </div>
+                <div class="meta-grid">
+                  <label class="setting-item">
+                    <span>分类</span>
+                    <input id="book-category-input" type="text" placeholder="例如：科幻 / 轻小说 / 历史" />
+                  </label>
+                  <label class="setting-item">
+                    <span>标签</span>
+                    <input id="book-tags-input" type="text" placeholder="用逗号分隔，例如：悬疑, 太空, 连载" />
+                  </label>
+                </div>
+                <div class="inline-actions">
+                  <button id="save-book-meta-btn" class="ghost-btn" type="button">保存分类与标签</button>
+                </div>
+              </section>
+
+              <div class="section-head">
+                <h2>章节目录</h2>
+                <span id="chapter-count" class="badge">0</span>
+              </div>
+              <div id="chapter-list" class="chapter-list empty">
+                打开支持阅读的书籍后，章节会显示在这里。
+              </div>
+            </div>
+
+            <div class="reader-main">
+              <div class="reader-toolbar">
+                <div>
+                  <p class="eyebrow">正文阅读</p>
+                  <h2 id="reader-chapter-title">请选择章节</h2>
+                </div>
+                <div class="reader-nav">
+                  <button id="toggle-shelf-btn" class="ghost-btn" type="button">加入书架</button>
+                  <button id="cache-book-btn" class="ghost-btn" type="button">缓存本书</button>
+                  <button id="clear-cache-btn" class="ghost-btn" type="button">清空缓存</button>
+                  <button id="prev-chapter-btn" class="ghost-btn" type="button">上一章</button>
+                  <button id="next-chapter-btn" class="ghost-btn" type="button">下一章</button>
+                </div>
+              </div>
+
+              <div class="cache-summary-row">
+                <span id="cache-summary" class="badge">已缓存 0 章</span>
+                <span id="cache-task-status" class="muted">暂无缓存任务</span>
+              </div>
+              <div class="cache-progress">
+                <div id="cache-progress-bar" class="cache-progress-bar"></div>
+              </div>
+
+              <section class="reader-settings card-inline">
+                <div class="section-head compact">
+                  <h2>阅读设置</h2>
+                </div>
+                <div class="settings-grid">
+                  <label class="setting-item">
+                    <span>主题</span>
+                    <select id="theme-select">
+                      <option value="warm">暖纸</option>
+                      <option value="mist">雾白</option>
+                      <option value="night">夜读</option>
+                    </select>
+                  </label>
+
+                  <label class="setting-item">
+                    <span>字号</span>
+                    <input id="font-size-range" type="range" min="14" max="32" step="1" />
+                    <strong id="font-size-value">17px</strong>
+                  </label>
+
+                  <label class="setting-item">
+                    <span>版心宽度</span>
+                    <input id="content-width-range" type="range" min="560" max="1200" step="20" />
+                    <strong id="content-width-value">820px</strong>
+                  </label>
+
+                  <label class="setting-item">
+                    <span>行距</span>
+                    <input id="line-height-range" type="range" min="1.4" max="3" step="0.1" />
+                    <strong id="line-height-value">2.0</strong>
+                  </label>
+                </div>
+              </section>
+
+              <div id="reader-status" class="reader-status muted">
+                选择一本支持阅读的书后，就可以在这里查看正文。
+              </div>
+              <article id="reader-content" class="reader-content empty">
+                正文区域已准备好。
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="source-item-template">
+      <article class="source-item">
+        <div>
+          <div class="source-title-row">
+            <h3 class="source-name"></h3>
+            <span class="source-enabled"></span>
+          </div>
+          <p class="source-description muted"></p>
+        </div>
+        <div class="source-actions">
+          <button class="toggle-btn" type="button"></button>
+          <button class="delete-btn" type="button">删除</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="shelf-item-template">
+      <article class="shelf-item">
+        <div class="shelf-cover-wrap">
+          <img class="shelf-cover" alt="书籍封面" />
+        </div>
+        <div class="shelf-body">
+          <div class="shelf-top">
+            <div>
+              <p class="shelf-source"></p>
+              <h3 class="shelf-title"></h3>
+            </div>
+            <span class="shelf-time muted"></span>
+          </div>
+          <p class="shelf-author"></p>
+          <p class="shelf-progress muted"></p>
+          <div class="shelf-tags"></div>
+          <div class="result-actions">
+            <button class="resume-btn" type="button">继续阅读</button>
+            <button class="shelf-remove-btn delete-btn" type="button">移出书架</button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <template id="result-item-template">
+      <article class="result-card">
+        <div class="result-cover-wrap">
+          <img class="result-cover" alt="封面" />
+        </div>
+        <div class="result-body">
+          <div class="result-top">
+            <div>
+              <p class="result-source"></p>
+              <h3 class="result-title"></h3>
+            </div>
+            <span class="result-badge"></span>
+          </div>
+          <p class="result-author"></p>
+          <p class="result-meta muted"></p>
+          <p class="result-intro muted"></p>
+          <div class="result-actions">
+            <button class="read-btn" type="button">阅读</button>
+            <button class="collect-btn ghost-btn" type="button">加入书架</button>
+            <a class="result-link" target="_blank" rel="noreferrer noopener">外部详情</a>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <template id="chapter-item-template">
+      <button class="chapter-item" type="button">
+        <span class="chapter-index"></span>
+        <span class="chapter-title"></span>
+      </button>
+    </template>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

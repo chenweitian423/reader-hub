@@ -1,0 +1,106 @@
+[
+  {
+    "name": "内置演示书源",
+    "description": "无需依赖外部站点，支持完整的搜索、目录和正文阅读演示",
+    "enabled": true,
+    "search": {
+      "method": "GET",
+      "url": "demo://search?keyword={keyword}",
+      "result_path": "results",
+      "fields": {
+        "title": "title",
+        "author": "author",
+        "cover": "cover",
+        "intro": "intro",
+        "detail_url": "detail_url",
+        "book_id": "id",
+        "latest_chapter": "latest_chapter"
+      },
+      "timeout_seconds": 10
+    },
+    "detail": {
+      "method": "GET",
+      "url": "demo://books/{book_id}",
+      "result_path": "book",
+      "fields": {
+        "title": "title",
+        "author": "author",
+        "cover": "cover",
+        "intro": "intro",
+        "detail_url": "detail_url",
+        "book_id": "id",
+        "latest_chapter": "latest_chapter",
+        "status": "status"
+      },
+      "timeout_seconds": 10
+    },
+    "chapters": {
+      "method": "GET",
+      "url": "demo://books/{book_id}/chapters",
+      "result_path": "chapters",
+      "fields": {
+        "title": "title",
+        "chapter_id": "id",
+        "chapter_url": "url"
+      },
+      "timeout_seconds": 10
+    },
+    "content": {
+      "method": "GET",
+      "url": "demo://books/{book_id}/chapters/{chapter_id}",
+      "result_path": "chapter",
+      "fields": {
+        "title": "title",
+        "content": "content"
+      },
+      "timeout_seconds": 10
+    }
+  },
+  {
+    "name": "Open Library",
+    "description": "Open Library 公共图书搜索示例",
+    "enabled": true,
+    "search": {
+      "method": "GET",
+      "url": "https://openlibrary.org/search.json?q={keyword}&limit=10",
+      "result_path": "docs",
+      "fields": {
+        "title": "title",
+        "author": "author_name.0",
+        "cover": "cover_i",
+        "detail_url": "key",
+        "intro": "first_sentence.0",
+        "book_id": "key"
+      },
+      "transforms": {
+        "cover": {
+          "prefix": "https://covers.openlibrary.org/b/id/",
+          "suffix": "-M.jpg"
+        },
+        "detail_url": {
+          "prefix": "https://openlibrary.org"
+        }
+      },
+      "timeout_seconds": 10
+    }
+  },
+  {
+    "name": "Gutendex",
+    "description": "Project Gutenberg 图书搜索示例",
+    "enabled": true,
+    "search": {
+      "method": "GET",
+      "url": "https://gutendex.com/books?search={keyword}",
+      "result_path": "results",
+      "fields": {
+        "title": "title",
+        "author": "authors.0.name",
+        "cover": "formats.image/jpeg",
+        "detail_url": "formats.text/html",
+        "intro": "summaries.0",
+        "book_id": "id"
+      },
+      "timeout_seconds": 10
+    }
+  }
+]

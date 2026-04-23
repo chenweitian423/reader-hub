@@ -1,0 +1,9 @@
+services:
+  reader-hub:
+    build: .
+    container_name: reader-hub
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
