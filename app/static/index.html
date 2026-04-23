@@ -194,6 +194,9 @@
             <div class="section-head">
               <h2>搜索状态</h2>
             </div>
+            <p id="source-status-summary" class="muted">
+              导入书源后即可搜索。
+            </p>
             <div id="source-status" class="source-status muted">
               导入书源后即可搜索。
             </div>
@@ -203,6 +206,12 @@
             <div class="section-head">
               <h2>搜索结果</h2>
               <span id="result-count" class="badge">0</span>
+            </div>
+            <div class="results-overview">
+              <p id="results-helper" class="muted">
+                搜索完成后，左侧会出现可点选书单，右侧会同步展示当前选中书籍的详情。
+              </p>
+              <span id="results-focus-badge" class="badge">等待搜索</span>
             </div>
             <div class="filters-bar">
               <label class="filter-item">
@@ -575,6 +584,7 @@
 
     <template id="result-item-template">
       <article class="result-card">
+        <span class="result-rank"></span>
         <div class="result-cover-wrap">
           <img class="result-cover" alt="封面" />
         </div>

@@ -71,7 +71,10 @@ const elements = {
   keywordInput: document.querySelector("#keyword-input"),
   results: document.querySelector("#results"),
   resultCount: document.querySelector("#result-count"),
+  resultsHelper: document.querySelector("#results-helper"),
+  resultsFocusBadge: document.querySelector("#results-focus-badge"),
   statusPill: document.querySelector("#status-pill"),
+  sourceStatusSummary: document.querySelector("#source-status-summary"),
   sourceStatus: document.querySelector("#source-status"),
   summarySourceCount: document.querySelector("#summary-source-count"),
   summarySourceMeta: document.querySelector("#summary-source-meta"),
@@ -171,6 +174,7 @@ const elements = {
   readerProgressText: document.querySelector("#reader-progress-text"),
   readerProgressBadge: document.querySelector("#reader-progress-badge"),
   readerProgressBar: document.querySelector("#reader-progress-bar"),
+  resultsSection: document.querySelector(".results-section"),
 };
 
 function setStatus(text, type = "idle") {
@@ -1035,6 +1039,9 @@ function renderShelf() {
 
 function renderSourceStatus(items = []) {
   if (!items.length) {
+    elements.sourceStatusSummary.textContent = state.sources.length
+      ? "书源已经准备好。搜索后这里只展示本次命中、失败和零命中的摘要，不再把所有来源都挤在首页。"
+      : "导入书源后即可搜索。";
     elements.sourceStatus.className = "source-status muted";
     elements.sourceStatus.textContent = state.sources.length
       ? "书源已准备好，输入关键词开始搜索。"
@@ -1042,18 +1049,83 @@ function renderSourceStatus(items = []) {
     return;
   }
 
+  const hitItems = items.filter((item) => item.success && item.count > 0);
+  const zeroHitItems = items.filter((item) => item.success && item.count === 0);
+  const failedItems = items.filter((item) => !item.success);
+  const totalHits = hitItems.reduce((total, item) => total + item.count, 0);
+
+  elements.sourceStatusSummary.textContent = [
+    `本次共检查 ${items.length} 个书源`,
+    hitItems.length ? `${hitItems.length} 个来源有结果` : "暂无来源命中",
+    zeroHitItems.length ? `${zeroHitItems.length} 个来源命中 0 本` : "",
+    failedItems.length ? `${failedItems.length} 个来源返回错误` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   elements.sourceStatus.className = "source-status";
   elements.sourceStatus.innerHTML = "";
 
-  items.forEach((item) => {
-    const div = document.createElement("div");
-    div.className = `source-status-item ${item.success ? "" : "failed"}`.trim();
-    div.innerHTML = `
-      <span class="source-status-name">${item.source_name}</span>
-      <span class="source-status-detail">${item.success ? `命中 ${item.count} 本` : item.error}</span>
-    `;
-    elements.sourceStatus.appendChild(div);
-  });
+  const summary = document.createElement("div");
+  summary.className = "source-status-summary-grid";
+  summary.innerHTML = `
+    <article class="source-summary-card success">
+      <span>总命中</span>
+      <strong>${totalHits}</strong>
+      <small>${hitItems.length ? "来自命中的书源" : "这次还没有搜到书"}</small>
+    </article>
+    <article class="source-summary-card">
+      <span>命中来源</span>
+      <strong>${hitItems.length}</strong>
+      <small>${items.length} 个书源里有结果的数量</small>
+    </article>
+    <article class="source-summary-card ${zeroHitItems.length ? "muted-card" : ""}">
+      <span>命中 0 本</span>
+      <strong>${zeroHitItems.length}</strong>
+      <small>${zeroHitItems.length ? "已折叠到下方，避免抢占首页" : "没有零命中的来源"}</small>
+    </article>
+    <article class="source-summary-card ${failedItems.length ? "warning" : ""}">
+      <span>失败来源</span>
+      <strong>${failedItems.length}</strong>
+      <small>${failedItems.length ? "建议优先检查这些书源规则" : "本次没有来源报错"}</small>
+    </article>
+  `;
+  elements.sourceStatus.appendChild(summary);
+
+  const visibleItems = [...hitItems, ...failedItems];
+  if (visibleItems.length) {
+    const list = document.createElement("div");
+    list.className = "source-status-list";
+    visibleItems.forEach((item) => {
+      const div = document.createElement("div");
+      div.className = `source-status-item ${item.success ? "success" : "failed"}`.trim();
+      div.innerHTML = `
+        <span class="source-status-name">${item.source_name}</span>
+        <span class="source-status-detail">${item.success ? `命中 ${item.count} 本` : item.error}</span>
+      `;
+      list.appendChild(div);
+    });
+    elements.sourceStatus.appendChild(list);
+  }
+
+  if (zeroHitItems.length) {
+    const collapse = document.createElement("details");
+    collapse.className = "source-status-collapse";
+    collapse.innerHTML = `<summary>查看 ${zeroHitItems.length} 个命中 0 本的书源</summary>`;
+    const list = document.createElement("div");
+    list.className = "source-status-list compact";
+    zeroHitItems.forEach((item) => {
+      const div = document.createElement("div");
+      div.className = "source-status-item neutral";
+      div.innerHTML = `
+        <span class="source-status-name">${item.source_name}</span>
+        <span class="source-status-detail">本次搜索没有命中结果</span>
+      `;
+      list.appendChild(div);
+    });
+    collapse.appendChild(list);
+    elements.sourceStatus.appendChild(collapse);
+  }
 }
 
 function getFilteredResults() {
@@ -1085,6 +1157,12 @@ function renderResults(items = state.results) {
   elements.resultCount.textContent = `${visibleResults.length}/${state.results.length}`;
 
   if (!visibleResults.length) {
+    elements.resultsFocusBadge.textContent = state.results.length ? "筛选后为空" : "等待结果";
+    elements.resultsHelper.textContent = state.results.length
+      ? "当前筛选条件把结果过滤掉了，放宽来源、能力或书架条件后就会重新出现可选书单。"
+      : state.sources.length
+        ? "搜索后，结果书单会直接出现在这里；如果某个来源失败，顶部搜索状态会给出原因。"
+        : "先导入至少一个可用书源，再回来搜索，结果区会直接变成可点选书单。";
     elements.results.className = "results empty";
     elements.results.textContent = state.results.length
       ? "当前筛选条件下没有结果，换个过滤条件试试。"
@@ -1099,9 +1177,12 @@ function renderResults(items = state.results) {
 
   elements.results.className = "results";
   elements.results.innerHTML = "";
+  elements.resultsFocusBadge.textContent = selected ? `当前选中 · ${selected.title || "未命名书籍"}` : "结果书单";
+  elements.resultsHelper.textContent = `已找到 ${state.results.length} 本书。左侧书单可直接切换，右侧详情会跟随当前选中书籍同步更新。`;
 
-  visibleResults.forEach((item) => {
+  visibleResults.forEach((item, index) => {
     const fragment = elements.resultItemTemplate.content.cloneNode(true);
+    const rank = fragment.querySelector(".result-rank");
     const cover = fragment.querySelector(".result-cover");
     const coverWrap = fragment.querySelector(".result-cover-wrap");
     const source = fragment.querySelector(".result-source");
@@ -1117,6 +1198,7 @@ function renderResults(items = state.results) {
     const readable = isReadableSource(item.source_id);
     const inShelf = isBookInShelf(item);
 
+    rank.textContent = String(index + 1).padStart(2, "0");
     source.textContent = item.source_name;
     title.textContent = item.title || "未命名书籍";
     author.textContent = item.author ? `作者: ${item.author}` : "作者信息缺失";
@@ -1532,6 +1614,7 @@ async function searchBooks(event) {
     rememberRecentSearch(keyword);
     renderResults(payload.items);
     renderSourceStatus(payload.sources);
+    elements.resultsSection?.scrollIntoView({ behavior: "smooth", block: "start" });
     const failedCount = payload.sources.filter((item) => !item.success).length;
     if (payload.total > 0) {
       setStatus(
