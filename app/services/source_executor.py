@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable
+from html import unescape
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -107,6 +108,81 @@ def normalize_legacy_url_template(raw_url: Any) -> dict[str, Any]:
     }
 
 
+def get_legacy_raw_config(legacy_config: dict[str, Any]) -> dict[str, Any]:
+    raw = legacy_config.get("raw", {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def get_legacy_rule(raw_config: dict[str, Any], key: str) -> dict[str, Any]:
+    value = raw_config.get(key, {})
+    return value if isinstance(value, dict) else {}
+
+
+def parse_legacy_headers(legacy_config: dict[str, Any]) -> dict[str, str]:
+    raw_config = get_legacy_raw_config(legacy_config)
+    raw_headers = raw_config.get("header")
+    if isinstance(raw_headers, str) and raw_headers.strip():
+        try:
+            parsed = json.loads(raw_headers)
+            if isinstance(parsed, dict):
+                return {str(key): str(value) for key, value in parsed.items()}
+        except json.JSONDecodeError:
+            return {}
+    if isinstance(raw_headers, dict):
+        return {str(key): str(value) for key, value in raw_headers.items()}
+    return {}
+
+
+def normalize_legacy_origin(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if "#" in text:
+        text = text.split("#", 1)[0].strip()
+    if "," in text and text.count("{") and text.rstrip().endswith("}"):
+        text = text.split(",", 1)[0].strip()
+    return text
+
+
+def resolve_legacy_base_url(legacy_config: dict[str, Any]) -> str:
+    raw_config = get_legacy_raw_config(legacy_config)
+    for candidate in (
+        raw_config.get("bookSourceUrl"),
+        legacy_config.get("search_url"),
+    ):
+        normalized = normalize_legacy_origin(str(candidate or ""))
+        if normalized:
+            return normalized
+    return ""
+
+
+def absolutize_legacy_url(url: str, base_url: str) -> str:
+    text = (url or "").strip()
+    if not text:
+        return ""
+    if text.startswith(("http://", "https://", "demo://")):
+        return text
+    if text.startswith("//"):
+        parsed = urlparse(base_url)
+        scheme = parsed.scheme or "https"
+        return f"{scheme}:{text}"
+    if text.startswith("javascript:"):
+        return ""
+    return urljoin(base_url, text) if base_url else text
+
+
+def legacy_source_supports_reading(source_config: dict[str, Any]) -> bool:
+    if source_config.get("chapters") and source_config.get("content"):
+        return True
+    legacy_config = source_config.get("legacy")
+    if not isinstance(legacy_config, dict):
+        return False
+    raw_config = get_legacy_raw_config(legacy_config)
+    rule_toc = get_legacy_rule(raw_config, "ruleToc")
+    rule_content = get_legacy_rule(raw_config, "ruleContent")
+    return bool(rule_toc.get("chapterList") and rule_content.get("content"))
+
+
 def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
     name = str(item.get("bookSourceName", "")).strip()
     if not name:
@@ -157,13 +233,21 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
     return BookSourceImport.model_validate(payload)
 
 
-async def perform_legacy_request(search_url: str, context: dict[str, str]) -> tuple[str, Any]:
+async def perform_legacy_request(
+    search_url: str,
+    context: dict[str, str],
+    *,
+    base_url: str = "",
+    extra_headers: dict[str, str] | None = None,
+) -> tuple[str, Any, str]:
     request_meta = normalize_legacy_url_template(search_url)
-    url = render_template(request_meta["url"], context)
+    url = absolutize_legacy_url(render_template(request_meta["url"], context), base_url)
     if url.startswith("demo://"):
-        return "json", perform_demo_request(url)
+        return "json", perform_demo_request(url), url
 
     headers = render_template(request_meta.get("headers", {}), context)
+    if extra_headers:
+        headers = {**extra_headers, **headers}
     params = render_template(request_meta.get("params", {}), context)
     body = render_template(request_meta.get("body", {}), context)
 
@@ -173,16 +257,17 @@ async def perform_legacy_request(search_url: str, context: dict[str, str]) -> tu
             url=url,
             headers=headers,
             params=params,
-            json=body if request_meta["method"] != "GET" and body else None,
+            data=body if request_meta["method"] != "GET" and body else None,
         )
         response.raise_for_status()
+        final_url = str(response.url)
         content_type = response.headers.get("content-type", "").lower()
         if "json" in content_type:
-            return "json", response.json()
+            return "json", response.json(), final_url
         try:
-            return "json", response.json()
+            return "json", response.json(), final_url
         except (ValueError, json.JSONDecodeError):
-            return "html", response.text
+            return "html", response.text, final_url
 
 
 def detect_legacy_rule_mode(book_list_rule: str, response_mode: str) -> str:
@@ -298,6 +383,233 @@ def extract_legacy_items(payload: Any, book_list_rule: str, mode: str) -> list[A
     return ensure_list(document.xpath(book_list_rule))
 
 
+def build_legacy_root(payload: Any, mode: str) -> Any:
+    if mode == "json":
+        return payload
+    if mode == "css":
+        return BeautifulSoup(str(payload), "lxml")
+    return lxml_html.fromstring(str(payload))
+
+
+def detect_legacy_expression_mode(expression: str, response_mode: str) -> str:
+    text = (expression or "").strip()
+    if response_mode == "json":
+        return "json"
+    if text.startswith("/") or text.startswith("./") or text.startswith(".//") or text.startswith("//"):
+        return "xpath"
+    return "css"
+
+
+def expression_prefers_html(expression: str) -> bool:
+    return expression.strip().endswith("@html")
+
+
+def apply_legacy_replace_regex(content: str, replace_regex: str) -> str:
+    text = content
+    raw = (replace_regex or "").strip()
+    if not raw:
+        return text
+    patterns = raw[2:] if raw.startswith("##") else raw
+    for pattern in [item for item in patterns.split("||") if item]:
+        text = re.sub(pattern, "", text, flags=re.MULTILINE)
+    return text
+
+
+def normalize_legacy_content_text(content: str, *, from_html: bool, replace_regex: str = "") -> str:
+    text = content or ""
+    if from_html:
+        html_content = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+        soup = BeautifulSoup(html_content, "lxml")
+        text = soup.get_text("\n", strip=True)
+    text = unescape(text)
+    text = apply_legacy_replace_regex(text, replace_regex)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def extract_legacy_root_value(payload: Any, response_mode: str, expression: str, field_name: str) -> str:
+    mode = detect_legacy_expression_mode(expression, response_mode)
+    root = build_legacy_root(payload, mode)
+    return extract_legacy_value(root, expression, mode, field_name)
+
+
+def merge_legacy_book_details(
+    book: dict[str, Any],
+    *,
+    payload: Any,
+    response_mode: str,
+    page_url: str,
+    legacy_config: dict[str, Any],
+) -> dict[str, Any]:
+    raw_config = get_legacy_raw_config(legacy_config)
+    rule_book_info = get_legacy_rule(raw_config, "ruleBookInfo")
+    if not rule_book_info:
+        return book
+
+    merged = dict(book)
+    field_map = {
+        "title": "name",
+        "author": "author",
+        "cover": "coverUrl",
+        "intro": "intro",
+        "latest_chapter": "lastChapter",
+        "status": "status",
+    }
+    for output_field, legacy_field in field_map.items():
+        expression = str(rule_book_info.get(legacy_field, "")).strip()
+        if not expression:
+            continue
+        value = extract_legacy_root_value(payload, response_mode, expression, f"ruleBookInfo.{legacy_field}")
+        if output_field == "cover":
+            value = absolutize_legacy_url(value, page_url or resolve_legacy_base_url(legacy_config))
+        if value:
+            merged[output_field] = value
+    return merged
+
+
+async def open_legacy_book(source_id: int, source_name: str, legacy_config: dict[str, Any], book: dict[str, Any]) -> dict[str, Any]:
+    raw_config = get_legacy_raw_config(legacy_config)
+    rule_toc = get_legacy_rule(raw_config, "ruleToc")
+    if not rule_toc.get("chapterList"):
+        raise ValueError("当前旧格式书源未配置目录规则")
+
+    detail_url = (
+        str(book.get("detail_url", "")).strip()
+        or str(book.get("book_id", "")).strip()
+    )
+    if not detail_url:
+        raise ValueError("当前书籍缺少详情地址，无法获取目录")
+
+    base_url = resolve_legacy_base_url(legacy_config)
+    context = build_context(book, book.get("raw", {}))
+    headers = parse_legacy_headers(legacy_config)
+    response_mode, payload, page_url = await perform_legacy_request(
+        detail_url,
+        context,
+        base_url=base_url,
+        extra_headers=headers,
+    )
+    merged_book = merge_legacy_book_details(
+        book,
+        payload=payload,
+        response_mode=response_mode,
+        page_url=page_url,
+        legacy_config=legacy_config,
+    )
+
+    chapters: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    current_payload = payload
+    current_mode = response_mode
+    current_page_url = page_url
+    next_expr = str(rule_toc.get("nextTocUrl", "")).strip()
+
+    for _ in range(8):
+        item_mode = detect_legacy_rule_mode(str(rule_toc.get("chapterList", "")), current_mode)
+        raw_items = extract_legacy_items(current_payload, str(rule_toc.get("chapterList", "")), item_mode)
+        for raw_item in raw_items:
+            title = extract_legacy_value(raw_item, str(rule_toc.get("chapterName", "text")), item_mode, "ruleToc.chapterName").strip()
+            chapter_url = extract_legacy_value(raw_item, str(rule_toc.get("chapterUrl", "")), item_mode, "ruleToc.chapterUrl").strip()
+            chapter_url = absolutize_legacy_url(chapter_url, current_page_url or base_url)
+            chapter_id = chapter_url or title
+            if not title:
+                continue
+            identity = chapter_url or chapter_id or title
+            if identity in seen:
+                continue
+            seen.add(identity)
+            chapters.append(
+                {
+                    "title": title,
+                    "chapter_id": chapter_id,
+                    "chapter_url": chapter_url,
+                    "raw": raw_item if isinstance(raw_item, dict) else {"value": str(raw_item)},
+                }
+            )
+
+        if not next_expr:
+            break
+        next_url = extract_legacy_root_value(current_payload, current_mode, next_expr, "ruleToc.nextTocUrl")
+        next_url = absolutize_legacy_url(next_url, current_page_url or base_url)
+        if not next_url or next_url == current_page_url:
+            break
+        current_mode, current_payload, current_page_url = await perform_legacy_request(
+            next_url,
+            context,
+            base_url=base_url,
+            extra_headers=headers,
+        )
+
+    return {"book": merged_book, "chapters": chapters}
+
+
+async def read_legacy_chapter_content(
+    legacy_config: dict[str, Any],
+    *,
+    book: dict[str, Any],
+    chapter: dict[str, Any],
+) -> dict[str, str]:
+    raw_config = get_legacy_raw_config(legacy_config)
+    rule_content = get_legacy_rule(raw_config, "ruleContent")
+    content_expr = str(rule_content.get("content", "")).strip()
+    if not content_expr:
+        raise ValueError("当前旧格式书源未配置正文规则")
+
+    chapter_url = (
+        str(chapter.get("chapter_url", "")).strip()
+        or str(chapter.get("chapter_id", "")).strip()
+    )
+    if not chapter_url:
+        raise ValueError("当前章节缺少正文地址")
+
+    base_url = resolve_legacy_base_url(legacy_config)
+    headers = parse_legacy_headers(legacy_config)
+    context = build_context(book, book.get("raw", {}), chapter, chapter.get("raw", {}))
+
+    parts: list[str] = []
+    current_url = chapter_url
+    visited: set[str] = set()
+    next_expr = str(rule_content.get("nextContentUrl", "")).strip()
+    replace_regex = str(rule_content.get("replaceRegex", "")).strip()
+
+    for _ in range(8):
+        target_url = absolutize_legacy_url(current_url, base_url)
+        if not target_url or target_url in visited:
+            break
+        visited.add(target_url)
+
+        response_mode, payload, page_url = await perform_legacy_request(
+            target_url,
+            context,
+            base_url=base_url,
+            extra_headers=headers,
+        )
+        content_mode = detect_legacy_expression_mode(content_expr, response_mode)
+        root = build_legacy_root(payload, content_mode)
+        segment = extract_legacy_value(root, content_expr, content_mode, "ruleContent.content")
+        text = normalize_legacy_content_text(
+            segment,
+            from_html=expression_prefers_html(content_expr),
+            replace_regex=replace_regex,
+        )
+        if text:
+            parts.append(text)
+
+        if not next_expr:
+            break
+        next_url = extract_legacy_root_value(payload, response_mode, next_expr, "ruleContent.nextContentUrl")
+        next_url = absolutize_legacy_url(next_url, page_url or base_url)
+        if not next_url or next_url in visited:
+            break
+        current_url = next_url
+
+    content = "\n\n".join(part for part in parts if part).strip()
+    if not content:
+        raise ValueError("当前章节正文为空")
+    return {"title": chapter.get("title", ""), "content": content}
+
+
 async def search_source_legacy(
     source_id: int,
     source_name: str,
@@ -305,9 +617,12 @@ async def search_source_legacy(
     keyword: str,
     limit_per_source: int,
 ) -> dict[str, Any]:
-    response_mode, payload = await perform_legacy_request(
+    extra_headers = parse_legacy_headers(legacy_config)
+    response_mode, payload, resolved_url = await perform_legacy_request(
         str(legacy_config.get("search_url", "")),
         {"keyword": keyword},
+        base_url=resolve_legacy_base_url(legacy_config),
+        extra_headers=extra_headers,
     )
     rule_search = legacy_config.get("rule_search", {}) if isinstance(legacy_config, dict) else {}
     if not isinstance(rule_search, dict):
@@ -346,6 +661,18 @@ async def search_source_legacy(
             mapped["raw"] = {"html": str(raw_item)}
         else:
             mapped["raw"] = {"value": str(raw_item)}
+        mapped["cover"] = absolutize_legacy_url(
+            mapped.get("cover", ""),
+            resolved_url or resolve_legacy_base_url(legacy_config),
+        )
+        mapped["detail_url"] = absolutize_legacy_url(
+            mapped.get("detail_url", ""),
+            resolved_url or resolve_legacy_base_url(legacy_config),
+        )
+        mapped["book_id"] = absolutize_legacy_url(
+            mapped.get("book_id", ""),
+            resolved_url or resolve_legacy_base_url(legacy_config),
+        )
         if mapped["title"]:
             normalized_items.append(mapped)
 

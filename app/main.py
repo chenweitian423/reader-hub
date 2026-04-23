@@ -49,8 +49,11 @@ from app.services.source_executor import (
     build_context,
     dumps_config,
     execute_mapping_request,
+    legacy_source_supports_reading,
     loads_config,
     normalize_source_payload,
+    open_legacy_book,
+    read_legacy_chapter_content,
     search_source,
 )
 from app.version import APP_VERSION
@@ -341,23 +344,37 @@ async def resolve_chapter_content(
 
     if not source.enabled:
         raise HTTPException(status_code=400, detail="当前书源已停用，且本章节尚未缓存")
-    if not source_config.get("content"):
+    legacy_config = source_config.get("legacy")
+    if not source_config.get("content") and not isinstance(legacy_config, dict):
         raise HTTPException(status_code=400, detail="当前书源未配置正文接口")
 
-    context = build_context(
-        normalized_book,
-        normalized_book.get("raw", {}),
-        normalized_chapter,
-        normalized_chapter.get("raw", {}),
-    )
-    content_items = await execute_mapping_request(source_config["content"], context)
-    if not content_items:
-        raise HTTPException(status_code=400, detail="当前章节没有获取到正文内容")
+    if isinstance(legacy_config, dict) and not source_config.get("content"):
+        try:
+            content_item = await read_legacy_chapter_content(
+                legacy_config,
+                book=normalized_book,
+                chapter=normalized_chapter,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        content = content_item.get("content", "").strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="当前章节正文为空")
+    else:
+        context = build_context(
+            normalized_book,
+            normalized_book.get("raw", {}),
+            normalized_chapter,
+            normalized_chapter.get("raw", {}),
+        )
+        content_items = await execute_mapping_request(source_config["content"], context)
+        if not content_items:
+            raise HTTPException(status_code=400, detail="当前章节没有获取到正文内容")
 
-    content_item = content_items[0]
-    content = content_item.get("content", "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="当前章节正文为空")
+        content_item = content_items[0]
+        content = content_item.get("content", "").strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="当前章节正文为空")
 
     cached = cached or CachedChapter(
         book_key=normalized_book["book_key"],
@@ -1055,11 +1072,10 @@ async def open_book(payload: BookOpenRequest, db: Session = Depends(get_db)) -> 
 
     if not source.enabled:
         raise HTTPException(status_code=400, detail="当前书源已停用")
-    if not source_config.get("chapters"):
-        raise HTTPException(status_code=400, detail="当前书源未配置章节接口")
+    if not legacy_source_supports_reading(source_config):
+        raise HTTPException(status_code=400, detail="当前书源暂不支持阅读")
 
     normalized_book = normalize_book_payload(source.id, source.name, payload.book)
-    book_context = build_context(normalized_book, normalized_book.get("raw", {}))
     merged_book = {
         "title": normalized_book.get("title", ""),
         "author": normalized_book.get("author", ""),
@@ -1073,20 +1089,40 @@ async def open_book(payload: BookOpenRequest, db: Session = Depends(get_db)) -> 
         "raw": normalized_book.get("raw", {}),
     }
 
-    if source_config.get("detail"):
-        detail_items = await execute_mapping_request(source_config["detail"], book_context)
-        if detail_items:
-            detail_item = detail_items[0]
-            merged_book.update({k: v for k, v in detail_item.items() if k != "raw" and v})
-            merged_book["raw"] = detail_item.get("raw", merged_book["raw"])
-            merged_book["book_key"] = build_book_key(source.id, merged_book)
-            book_context = build_context(merged_book, merged_book.get("raw", {}))
+    chapter_items: list[dict[str, Any]]
+    legacy_config = source_config.get("legacy")
 
-    chapter_items = await execute_mapping_request(
-        source_config["chapters"],
-        book_context,
-        force_list=True,
-    )
+    if isinstance(legacy_config, dict) and not source_config.get("chapters"):
+        try:
+            legacy_result = await open_legacy_book(
+                source.id,
+                source.name,
+                legacy_config,
+                merged_book,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        merged_book.update({k: v for k, v in legacy_result["book"].items() if k != "raw" and v})
+        merged_book["raw"] = legacy_result["book"].get("raw", merged_book["raw"])
+        merged_book["book_key"] = build_book_key(source.id, merged_book)
+        chapter_items = legacy_result["chapters"]
+    else:
+        book_context = build_context(normalized_book, normalized_book.get("raw", {}))
+        if source_config.get("detail"):
+            detail_items = await execute_mapping_request(source_config["detail"], book_context)
+            if detail_items:
+                detail_item = detail_items[0]
+                merged_book.update({k: v for k, v in detail_item.items() if k != "raw" and v})
+                merged_book["raw"] = detail_item.get("raw", merged_book["raw"])
+                merged_book["book_key"] = build_book_key(source.id, merged_book)
+                book_context = build_context(merged_book, merged_book.get("raw", {}))
+
+        chapter_items = await execute_mapping_request(
+            source_config["chapters"],
+            book_context,
+            force_list=True,
+        )
+
     if not chapter_items:
         raise HTTPException(status_code=400, detail="当前书籍没有获取到章节列表")
 
@@ -1103,6 +1139,9 @@ async def open_book(payload: BookOpenRequest, db: Session = Depends(get_db)) -> 
         for chapter in chapter_items
         if chapter.get("title")
     ]
+
+    if not normalized_chapters:
+        raise HTTPException(status_code=400, detail="当前书籍没有获取到可用章节")
 
     return BookOpenResponse(
         source_id=source.id,

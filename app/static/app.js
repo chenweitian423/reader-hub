@@ -190,9 +190,22 @@ function getShelfBookByKey(bookKey) {
   return state.shelfBooks.find((book) => book.book_key === bookKey) || null;
 }
 
+function sourceSupportsReadingConfig(config) {
+  if (!config) return false;
+  if (config.chapters && config.content) return true;
+  const legacyRaw = config.legacy && config.legacy.raw;
+  return Boolean(
+    legacyRaw &&
+      legacyRaw.ruleToc &&
+      legacyRaw.ruleToc.chapterList &&
+      legacyRaw.ruleContent &&
+      legacyRaw.ruleContent.content,
+  );
+}
+
 function isReadableSource(sourceId) {
   const source = getSourceById(sourceId);
-  return Boolean(source && source.config && source.config.chapters && source.config.content);
+  return Boolean(source && source.config && sourceSupportsReadingConfig(source.config));
 }
 
 function isBookInShelf(book) {
@@ -919,7 +932,7 @@ function renderSources() {
     if (config.legacy) {
       summaryParts.push("旧格式兼容");
     }
-    summaryParts.push(config.chapters && config.content ? "支持阅读" : "仅搜索");
+    summaryParts.push(sourceSupportsReadingConfig(config) ? "支持阅读" : "仅搜索");
 
     name.textContent = source.name;
     description.textContent = [source.description || "未填写说明", summaryParts.join(" · ")]
