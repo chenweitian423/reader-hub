@@ -7,12 +7,23 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+from pydantic import ValidationError
 
 from app.schemas import BookSourceImport, RequestConfig
 from app.services.demo_library import get_demo_book, search_demo_books
 
 
 PLACEHOLDER_PATTERN = re.compile(r"\{([^{}]+)\}")
+LEGACY_UNSUPPORTED_TOKENS = (
+    "@js:",
+    "<js>",
+    "@css:",
+    "@xpath:",
+    "&&",
+    "##",
+    "@put:{",
+    "@post:{",
+)
 
 
 def normalize_source_payload(payload: Any) -> list[BookSourceImport]:
@@ -20,7 +31,143 @@ def normalize_source_payload(payload: Any) -> list[BookSourceImport]:
         payload = [payload]
     if not isinstance(payload, list):
         raise ValueError("书源 JSON 必须是对象或对象数组")
-    return [BookSourceImport.model_validate(item) for item in payload]
+    normalized: list[BookSourceImport] = []
+    for item in payload:
+        try:
+            normalized.append(BookSourceImport.model_validate(item))
+        except ValidationError as exc:
+            if isinstance(item, dict) and is_legacy_source_payload(item):
+                normalized.append(convert_legacy_source_payload(item))
+                continue
+            raise exc
+    return normalized
+
+
+def is_legacy_source_payload(item: dict[str, Any]) -> bool:
+    return any(key in item for key in ("bookSourceName", "bookSourceGroup", "searchUrl", "ruleSearch"))
+
+
+def raise_unsupported_legacy_rule(field_name: str, expression: str) -> None:
+    raise ValueError(
+        f"暂不支持旧格式书源中的 `{field_name}` 规则：{expression}。"
+        "当前只兼容基于 JSON API 的简化规则，不兼容 JS/CSS/XPath 解析语法。"
+    )
+
+
+def normalize_legacy_rule_path(expression: str | None, *, field_name: str, allow_empty: bool = False) -> str:
+    text = (expression or "").strip()
+    if not text:
+        if allow_empty:
+            return ""
+        raise ValueError(f"旧格式书源缺少 `{field_name}` 配置")
+    if any(token in text for token in LEGACY_UNSUPPORTED_TOKENS):
+        raise_unsupported_legacy_rule(field_name, text)
+    text = text.replace("$.", "").replace("$", "")
+    text = re.sub(r"\[(\d+)\]", r".\1", text)
+    text = text.replace("[*]", "")
+    text = text.lstrip(".")
+    if "@" in text:
+        raise_unsupported_legacy_rule(field_name, text)
+    return text
+
+
+def normalize_legacy_url_template(raw_url: Any) -> dict[str, Any]:
+    if not isinstance(raw_url, str) or not raw_url.strip():
+        raise ValueError("旧格式书源缺少 `searchUrl`")
+    url_text = raw_url.strip()
+    options: dict[str, Any] = {}
+    if "," in url_text:
+        base_url, possible_options = url_text.split(",", 1)
+        maybe_json = possible_options.strip()
+        if maybe_json.startswith("{") and maybe_json.endswith("}"):
+            try:
+                options = json.loads(maybe_json)
+                url_text = base_url.strip()
+            except json.JSONDecodeError:
+                url_text = raw_url.strip()
+
+    if any(token in url_text for token in LEGACY_UNSUPPORTED_TOKENS):
+        raise_unsupported_legacy_rule("searchUrl", url_text)
+
+    method = str(options.get("method", "GET")).upper()
+    body = options.get("body", {})
+    if isinstance(body, str):
+        body = {part.split("=", 1)[0]: part.split("=", 1)[1] for part in body.split("&") if "=" in part}
+    elif not isinstance(body, dict):
+        body = {}
+
+    return {
+        "method": method,
+        "url": url_text.replace("{{key}}", "{keyword}"),
+        "headers": options.get("headers", {}) if isinstance(options.get("headers", {}), dict) else {},
+        "body": body,
+        "params": options.get("params", {}) if isinstance(options.get("params", {}), dict) else {},
+    }
+
+
+def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
+    name = str(item.get("bookSourceName", "")).strip()
+    if not name:
+        raise ValueError("旧格式书源缺少 `bookSourceName`，无法导入")
+
+    search_rule = item.get("ruleSearch")
+    if not isinstance(search_rule, dict):
+        raise ValueError(f"旧格式书源 `{name}` 缺少 `ruleSearch`，暂时无法导入")
+
+    request_meta = normalize_legacy_url_template(item.get("searchUrl"))
+    result_path = normalize_legacy_rule_path(
+        search_rule.get("bookList"),
+        field_name="ruleSearch.bookList",
+    )
+
+    field_candidates = {
+        "title": search_rule.get("name"),
+        "author": search_rule.get("author"),
+        "cover": search_rule.get("coverUrl") or search_rule.get("cover"),
+        "intro": search_rule.get("intro") or search_rule.get("introHtml"),
+        "detail_url": search_rule.get("bookUrl") or search_rule.get("url"),
+        "book_id": search_rule.get("bookUrl") or search_rule.get("bookId"),
+        "latest_chapter": search_rule.get("lastChapter") or search_rule.get("latestChapter"),
+    }
+
+    fields: dict[str, str] = {}
+    for output_field, expression in field_candidates.items():
+        if not expression:
+            continue
+        fields[output_field] = normalize_legacy_rule_path(
+            expression,
+            field_name=f"ruleSearch.{output_field}",
+            allow_empty=True,
+        )
+
+    if "title" not in fields:
+        raise ValueError(f"旧格式书源 `{name}` 的 `ruleSearch.name` 缺失，无法导入")
+
+    description_parts = [
+        str(item.get("bookSourceGroup", "")).strip(),
+        str(item.get("bookSourceComment", "")).strip(),
+    ]
+    description = " · ".join(part for part in description_parts if part)
+    if not description:
+        description = "从旧格式书源自动转换，仅保证导入与搜索兼容。"
+
+    payload = {
+        "name": name,
+        "description": description,
+        "enabled": bool(item.get("enabled", True)),
+        "search": {
+            "method": request_meta["method"],
+            "url": request_meta["url"],
+            "headers": request_meta["headers"],
+            "params": request_meta["params"],
+            "body": request_meta["body"],
+            "result_path": result_path,
+            "fields": fields,
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+    }
+    return BookSourceImport.model_validate(payload)
 
 
 def flatten_for_context(value: Any, prefix: str = "") -> dict[str, str]:

@@ -14,6 +14,7 @@ from typing import Any, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -106,6 +107,15 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def format_validation_error(exc: ValidationError) -> str:
+    errors: list[str] = []
+    for item in exc.errors():
+        location = ".".join(str(part) for part in item.get("loc", []))
+        message = item.get("msg", "字段校验失败")
+        errors.append(f"{location}: {message}" if location else message)
+    return "；".join(errors) or "书源格式校验失败"
 
 
 def serialize_source(source: BookSource) -> BookSourceRead:
@@ -501,7 +511,12 @@ async def import_sources(request: Request, db: Session = Depends(get_db)) -> lis
     except JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"书源 JSON 解析失败: {exc}") from exc
 
-    sources_to_import = normalize_source_payload(payload)
+    try:
+        sources_to_import = normalize_source_payload(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"书源格式校验失败: {format_validation_error(exc)}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     imported: list[BookSourceRead] = []
 
     for item in sources_to_import:
