@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from app.schemas import BookSourceImport, RequestConfig
 from app.services.demo_library import get_demo_book, search_demo_books
+from app.services.uploaded_library import perform_uploaded_request
 
 
 PLACEHOLDER_PATTERN = re.compile(r"\{([^{}]+)\}")
@@ -783,6 +784,8 @@ async def perform_request(config: RequestConfig | dict[str, Any], context: dict[
     url = render_template(request_config["url"], context)
     if url.startswith("demo://"):
         return perform_demo_request(url)
+    if url.startswith("uploaded://"):
+        return perform_uploaded_request(url)
 
     headers = render_template(request_config.get("headers", {}), context)
     params = render_template(request_config.get("params", {}), context)

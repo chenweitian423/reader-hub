@@ -66,6 +66,11 @@ const elements = {
   shelfCount: document.querySelector("#shelf-count"),
   shelfSearchInput: document.querySelector("#shelf-search-input"),
   shelfCategoryFilter: document.querySelector("#shelf-category-filter"),
+  shelfUploadFile: document.querySelector("#shelf-upload-file"),
+  shelfUploadCategory: document.querySelector("#shelf-upload-category"),
+  shelfUploadTags: document.querySelector("#shelf-upload-tags"),
+  shelfUploadBtn: document.querySelector("#shelf-upload-btn"),
+  uploadApiEndpoint: document.querySelector("#upload-api-endpoint"),
   searchForm: document.querySelector("#search-form"),
   pageShell: document.querySelector("#page-shell"),
   keywordInput: document.querySelector("#keyword-input"),
@@ -810,6 +815,9 @@ function renderAppMeta() {
   elements.appTitle.textContent = state.appMeta.title;
   elements.appVersionBadge.textContent = `v${state.appMeta.version}`;
   elements.toolsVersionBadge.textContent = `v${state.appMeta.version}`;
+  if (elements.uploadApiEndpoint) {
+    elements.uploadApiEndpoint.textContent = `${window.location.origin}/api/library/uploads`;
+  }
   document.title = `${state.appMeta.title} v${state.appMeta.version}`;
 }
 
@@ -1525,6 +1533,56 @@ async function importSources() {
   }
 }
 
+async function uploadBooksToShelf() {
+  const files = Array.from(elements.shelfUploadFile.files || []);
+  if (!files.length) {
+    setStatus("请先选择 TXT、MD 或 EPUB 文件", "error");
+    return;
+  }
+
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
+  formData.append("category", elements.shelfUploadCategory.value.trim());
+  formData.append("tags", elements.shelfUploadTags.value.trim());
+
+  elements.shelfUploadBtn.disabled = true;
+  setStatus("正在导入本地书籍", "loading");
+
+  try {
+    const response = await fetch("/api/library/uploads", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      let message = "书籍导入失败";
+      try {
+        const payload = await response.json();
+        message = payload.detail || message;
+      } catch {
+        message = response.statusText || message;
+      }
+      throw new Error(message);
+    }
+    const payload = await response.json();
+    await Promise.all([refreshSources(), refreshShelf(), refreshSummary()]);
+    setActivePage("shelf");
+    const lead = payload.items[0];
+    setStatus(
+      payload.imported_count > 1
+        ? `已导入 ${payload.imported_count} 本书到书架`
+        : `已导入《${lead?.title || files[0].name}》到书架`,
+      "success",
+    );
+    elements.shelfUploadFile.value = "";
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    elements.shelfUploadBtn.disabled = false;
+  }
+}
+
 async function exportBackup() {
   elements.backupExportBtn.disabled = true;
   setStatus("正在生成备份文件", "loading");
@@ -1952,6 +2010,7 @@ function runQuickSearch(keyword) {
 
 loadRecentSearches();
 elements.importBtn.addEventListener("click", importSources);
+elements.shelfUploadBtn.addEventListener("click", uploadBooksToShelf);
 elements.loadSampleBtn.addEventListener("click", loadSampleJson);
 elements.backupExportBtn.addEventListener("click", exportBackup);
 elements.backupImportBtn.addEventListener("click", importBackup);

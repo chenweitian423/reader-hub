@@ -441,6 +441,34 @@
             <span id="shelf-count" class="badge">0</span>
           </section>
           <section class="card">
+            <div class="section-head">
+              <h2>导入本地书籍</h2>
+              <span class="badge">TXT / MD / EPUB</span>
+            </div>
+            <p class="hint">
+              你可以直接把本机书籍导入书架，也可以让同一网络下的设备调用上传接口把书推送进来。
+            </p>
+            <div class="shelf-upload-panel">
+              <div class="inline-actions">
+                <label class="upload-btn" for="shelf-upload-file">选择书籍文件</label>
+                <input id="shelf-upload-file" type="file" accept=".txt,.md,.epub" multiple />
+                <button id="shelf-upload-btn" type="button">导入到书架</button>
+              </div>
+              <div class="meta-grid">
+                <label class="setting-item">
+                  <span>默认分类</span>
+                  <input id="shelf-upload-category" type="text" placeholder="可选，例如：本地导入 / 学习 / 小说" />
+                </label>
+                <label class="setting-item">
+                  <span>默认标签</span>
+                  <input id="shelf-upload-tags" type="text" placeholder="可选，用逗号分隔，例如：本地, 上传" />
+                </label>
+              </div>
+              <p class="hint">
+                同网络上传接口：
+                <code id="upload-api-endpoint">/api/library/uploads</code>
+              </p>
+            </div>
             <p class="hint">收藏的书和阅读进度都会保存在这里，下次打开可继续阅读。</p>
             <div class="shelf-tools">
               <input id="shelf-search-input" type="text" placeholder="搜索书架中的书名、作者、标签" />

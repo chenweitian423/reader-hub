@@ -11,14 +11,14 @@ chenxiaotian423/reader-hub:latest
 当前发布版本：
 
 ```text
-1.12.2
+1.13.0
 ```
 
 每次迭代发布后，镜像会同时生成这些标签：
 
 - `latest`
-- `1.12.2`
-- `1.12`
+- `1.13.0`
+- `1.13`
 - `sha-<commit>`
 
 ## 快速启动
@@ -65,7 +65,7 @@ http://localhost:8000
 
 - 默认值：`latest`
 - 作用：指定要部署的 Docker 镜像版本
-- 例子：`1.12.2`
+- 例子：`1.13.0`
 
 ### `READER_HUB_DATABASE_URL`
 
@@ -107,4 +107,27 @@ http://localhost:8000
 - 目录抽屉、底部翻页条与自动收起的阅读工具栏
 - 旧格式书源兼容导入与搜索支持，覆盖常见 JSON、HTML/CSS、XPath 搜索规则
 - 放宽旧格式导入校验，更复杂规则也可先导入，搜索阶段再按来源单独提示
+- 本地 TXT / MD / EPUB 书籍导入
+- 同网络设备通过 `/api/library/uploads` 直接上传书籍到书架
+
+## 局域网上传接口
+
+服务启动后，同一网络下的设备可以直接向下面这个接口上传书籍：
+
+```text
+POST /api/library/uploads
+```
+
+请求格式：
+
+- `multipart/form-data`
+- 字段 `files`：一个或多个书籍文件
+- 可选字段 `category`：导入后默认分类
+- 可选字段 `tags`：逗号分隔的默认标签
+
+支持格式：
+
+- `txt`
+- `md`
+- `epub`
 - Docker 部署与本地 SQLite 持久化

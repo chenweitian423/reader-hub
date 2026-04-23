@@ -247,3 +247,18 @@ class BackupRestoreResponse(BaseModel):
     imported_source_count: int = 0
     imported_shelf_count: int = 0
     imported_cached_chapter_count: int = 0
+
+
+class UploadedBookImportItem(BaseModel):
+    filename: str
+    title: str
+    book_key: str
+    source_id: int
+    source_name: str
+    chapter_count: int = 0
+    format: str = ""
+
+
+class UploadedBookImportResponse(BaseModel):
+    imported_count: int = 0
+    items: list[UploadedBookImportItem] = Field(default_factory=list)

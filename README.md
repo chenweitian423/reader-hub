@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.12.2`
+当前版本：`1.13.0`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -22,6 +22,8 @@
 - 独立阅读页与可折叠阅读侧栏
 - 目录抽屉、底部翻页条与自动收起工具栏
 - 旧格式书源兼容导入、搜索与清晰错误提示
+- 本地 TXT / MD / EPUB 书籍导入
+- 同网络设备直传书籍到书架
 - 查看书籍章节目录
 - 在线阅读章节正文
 - SQLite 本地持久化
@@ -77,7 +79,7 @@ docker compose up -d
 如果你希望固定到某个发布版本，可以先复制 [`.env.example`](/Users/sky/Documents/test/.env.example) 为 `.env`，然后把：
 
 ```text
-READER_HUB_IMAGE_TAG=1.12.2
+READER_HUB_IMAGE_TAG=1.13.0
 ```
 
 改成你要部署的镜像版本。
@@ -111,7 +113,7 @@ uvicorn app.main:app --reload
 
 - 默认值：`latest`
 - 用途：指定 `docker-compose.yml` 拉取的镜像版本
-- 示例：`1.12.2`
+- 示例：`1.13.0`
 
 ### `READER_HUB_DATABASE_URL`
 
@@ -142,6 +144,45 @@ uvicorn app.main:app --reload
 10. 打开书籍后会进入独立阅读页，正文区域更大，也可以手动收起侧栏进一步放大阅读区
 11. 阅读页现在支持目录抽屉、底部翻页条，以及随滚动自动收起的顶部工具栏
 12. 导入书源时会兼容一类常见旧格式书源，包括常见 JSON、HTML/CSS、XPath 搜索规则；更复杂规则现在也可先导入，若暂不支持会在搜索阶段单独提示
+13. 你也可以在“我的书架”里直接导入 TXT、MD、EPUB，本地书会自动进入“本地导入书库”并可直接阅读
+
+## 4.1 本地书籍导入
+
+书架页支持直接导入：
+
+- `.txt`
+- `.md`
+- `.epub`
+
+导入后会自动：
+
+- 加入书架
+- 归入内置来源“本地导入书库”
+- 支持目录、正文阅读和进度保存
+
+## 4.2 局域网上传接口
+
+如果另一台设备和 Reader Hub 在同一网络，可以直接调用：
+
+```text
+POST /api/library/uploads
+```
+
+请求格式为 `multipart/form-data`，字段：
+
+- `files`：一个或多个书籍文件
+- `category`：可选，默认分类
+- `tags`：可选，逗号分隔的默认标签
+
+示例：
+
+```bash
+curl -X POST "http://你的服务器地址:8000/api/library/uploads" \
+  -F "files=@/path/to/book.epub" \
+  -F "files=@/path/to/notes.txt" \
+  -F "category=本地导入" \
+  -F "tags=上传,局域网"
+```
 
 示例内已包含一个本地演示书源，不依赖第三方站点即可试读完整流程。
 现在首次启动时也会自动写入“内置演示书源”，不必手动导入才能开始体验。

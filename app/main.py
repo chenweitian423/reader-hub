@@ -11,7 +11,7 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -43,6 +43,8 @@ from app.schemas import (
     ShelfBookCreate,
     ShelfBookRead,
     ShelfBookUpdate,
+    UploadedBookImportItem,
+    UploadedBookImportResponse,
 )
 from app.services.demo_library import demo_library_stats, get_demo_book, search_demo_books
 from app.services.source_executor import (
@@ -55,6 +57,11 @@ from app.services.source_executor import (
     open_legacy_book,
     read_legacy_chapter_content,
     search_source,
+)
+from app.services.uploaded_library import (
+    ensure_uploaded_library_dirs,
+    parse_uploaded_book,
+    save_uploaded_book,
 )
 from app.version import APP_VERSION
 
@@ -70,6 +77,109 @@ AUTO_SEED_DEMO_SOURCE = os.getenv("READER_HUB_AUTO_SEED_DEMO_SOURCE", "true").st
     "no",
     "off",
 }
+UPLOADED_SOURCE_NAME = "本地导入书库"
+
+
+def build_uploaded_source_config() -> dict[str, Any]:
+    return {
+        "name": UPLOADED_SOURCE_NAME,
+        "description": "支持本地 TXT / MD / EPUB 导入，也支持局域网设备直接上传到书架。",
+        "enabled": True,
+        "search": {
+            "method": "GET",
+            "url": "uploaded://search?keyword={keyword}",
+            "headers": {},
+            "params": {},
+            "body": {},
+            "result_path": "results",
+            "fields": {
+                "title": "title",
+                "author": "author",
+                "cover": "cover",
+                "intro": "intro",
+                "detail_url": "detail_url",
+                "book_id": "id",
+                "latest_chapter": "latest_chapter",
+                "status": "status",
+            },
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+        "detail": {
+            "method": "GET",
+            "url": "uploaded://books/{book_id}",
+            "headers": {},
+            "params": {},
+            "body": {},
+            "result_path": "book",
+            "fields": {
+                "title": "title",
+                "author": "author",
+                "cover": "cover",
+                "intro": "intro",
+                "detail_url": "detail_url",
+                "book_id": "id",
+                "latest_chapter": "latest_chapter",
+                "status": "status",
+            },
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+        "chapters": {
+            "method": "GET",
+            "url": "uploaded://books/{book_id}/chapters",
+            "headers": {},
+            "params": {},
+            "body": {},
+            "result_path": "chapters",
+            "fields": {
+                "title": "title",
+                "chapter_id": "id",
+                "chapter_url": "url",
+            },
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+        "content": {
+            "method": "GET",
+            "url": "uploaded://books/{book_id}/chapters/{chapter_id}",
+            "headers": {},
+            "params": {},
+            "body": {},
+            "result_path": "chapter",
+            "fields": {
+                "title": "title",
+                "content": "content",
+            },
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+    }
+
+
+def ensure_uploaded_source_seeded() -> None:
+    ensure_uploaded_library_dirs()
+    db = SessionLocal()
+    try:
+        existing = db.query(BookSource).filter(BookSource.name == UPLOADED_SOURCE_NAME).first()
+        config = build_uploaded_source_config()
+        if existing:
+            existing.description = config["description"]
+            existing.enabled = True
+            existing.config_json = dumps_config(config)
+            db.add(existing)
+            db.commit()
+            return
+        source = BookSource(
+            name=UPLOADED_SOURCE_NAME,
+            description=config["description"],
+            enabled=True,
+            config_json=dumps_config(config),
+        )
+        db.add(source)
+        db.commit()
+    finally:
+        db.close()
 
 
 def ensure_demo_source_seeded() -> None:
@@ -103,6 +213,7 @@ def ensure_demo_source_seeded() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    ensure_uploaded_source_seeded()
     if AUTO_SEED_DEMO_SOURCE:
         ensure_demo_source_seeded()
     yield
@@ -248,6 +359,13 @@ def get_source_or_404(source_id: int, db: Session) -> BookSource:
     source = db.query(BookSource).filter(BookSource.id == source_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="书源不存在")
+    return source
+
+
+def get_uploaded_source_or_404(db: Session) -> BookSource:
+    source = db.query(BookSource).filter(BookSource.name == UPLOADED_SOURCE_NAME).first()
+    if not source:
+        raise HTTPException(status_code=500, detail="本地导入书库尚未初始化")
     return source
 
 
@@ -600,6 +718,56 @@ async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]
         .all()
     )
     return [serialize_shelf_book(book, int(cache_counts.get(book.book_key, 0))) for book in books]
+
+
+@app.post("/api/library/uploads", response_model=UploadedBookImportResponse)
+async def upload_books_to_shelf(
+    files: list[UploadFile] = File(...),
+    category: str = Form(""),
+    tags: str = Form(""),
+    db: Session = Depends(get_db),
+) -> UploadedBookImportResponse:
+    if not files:
+        raise HTTPException(status_code=400, detail="请至少选择一个书籍文件")
+
+    source = get_uploaded_source_or_404(db)
+    normalized_tags = [item.strip() for item in tags.split(",") if item.strip()]
+    imported_items: list[UploadedBookImportItem] = []
+
+    for file in files:
+        filename = (file.filename or "").strip()
+        if not filename:
+            raise HTTPException(status_code=400, detail="存在缺少文件名的上传文件")
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail=f"文件 `{filename}` 为空，无法导入")
+        try:
+            parsed_book = parse_uploaded_book(filename, raw)
+            saved_book = save_uploaded_book(filename, parsed_book)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        shelf_book = upsert_shelf_book(db, source_id=source.id, source_name=source.name, book=saved_book)
+        if category.strip():
+            shelf_book.category = category.strip()
+        if normalized_tags:
+            shelf_book.tags_json = dumps_config(normalized_tags)
+        db.add(shelf_book)
+        db.flush()
+        imported_items.append(
+            UploadedBookImportItem(
+                filename=filename,
+                title=saved_book.get("title", ""),
+                book_key=shelf_book.book_key,
+                source_id=source.id,
+                source_name=source.name,
+                chapter_count=len(parsed_book.get("chapters", [])),
+                format=parsed_book.get("format", ""),
+            )
+        )
+
+    db.commit()
+    return UploadedBookImportResponse(imported_count=len(imported_items), items=imported_items)
 
 
 @app.get("/api/library/backup")
