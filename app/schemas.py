@@ -28,6 +28,7 @@ class BookSourceImport(BaseModel):
     detail: Optional[RequestConfig] = None
     chapters: Optional[RequestConfig] = None
     content: Optional[RequestConfig] = None
+    legacy: Optional[dict[str, Any]] = None
 
 
 class BookSourceRead(BaseModel):

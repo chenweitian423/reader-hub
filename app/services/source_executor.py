@@ -7,6 +7,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+from bs4 import BeautifulSoup, Tag
+from lxml import html as lxml_html
 from pydantic import ValidationError
 
 from app.schemas import BookSourceImport, RequestConfig
@@ -115,32 +117,9 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
         raise ValueError(f"旧格式书源 `{name}` 缺少 `ruleSearch`，暂时无法导入")
 
     request_meta = normalize_legacy_url_template(item.get("searchUrl"))
-    result_path = normalize_legacy_rule_path(
-        search_rule.get("bookList"),
-        field_name="ruleSearch.bookList",
-    )
-
-    field_candidates = {
-        "title": search_rule.get("name"),
-        "author": search_rule.get("author"),
-        "cover": search_rule.get("coverUrl") or search_rule.get("cover"),
-        "intro": search_rule.get("intro") or search_rule.get("introHtml"),
-        "detail_url": search_rule.get("bookUrl") or search_rule.get("url"),
-        "book_id": search_rule.get("bookUrl") or search_rule.get("bookId"),
-        "latest_chapter": search_rule.get("lastChapter") or search_rule.get("latestChapter"),
-    }
-
-    fields: dict[str, str] = {}
-    for output_field, expression in field_candidates.items():
-        if not expression:
-            continue
-        fields[output_field] = normalize_legacy_rule_path(
-            expression,
-            field_name=f"ruleSearch.{output_field}",
-            allow_empty=True,
-        )
-
-    if "title" not in fields:
+    if not str(search_rule.get("bookList", "")).strip():
+        raise ValueError(f"旧格式书源 `{name}` 的 `ruleSearch.bookList` 缺失，无法导入")
+    if not str(search_rule.get("name", "")).strip():
         raise ValueError(f"旧格式书源 `{name}` 的 `ruleSearch.name` 缺失，无法导入")
 
     description_parts = [
@@ -161,13 +140,220 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
             "headers": request_meta["headers"],
             "params": request_meta["params"],
             "body": request_meta["body"],
-            "result_path": result_path,
-            "fields": fields,
+            "result_path": "",
+            "fields": {"title": "title"},
             "transforms": {},
             "timeout_seconds": 10.0,
         },
+        "legacy": {
+            "format": "legado",
+            "search_url": item.get("searchUrl", ""),
+            "rule_search": search_rule,
+            "raw": item,
+        },
     }
     return BookSourceImport.model_validate(payload)
+
+
+async def perform_legacy_request(search_url: str, context: dict[str, str]) -> tuple[str, Any]:
+    request_meta = normalize_legacy_url_template(search_url)
+    url = render_template(request_meta["url"], context)
+    if url.startswith("demo://"):
+        return "json", perform_demo_request(url)
+
+    headers = render_template(request_meta.get("headers", {}), context)
+    params = render_template(request_meta.get("params", {}), context)
+    body = render_template(request_meta.get("body", {}), context)
+
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        response = await client.request(
+            method=request_meta["method"],
+            url=url,
+            headers=headers,
+            params=params,
+            json=body if request_meta["method"] != "GET" and body else None,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").lower()
+        if "json" in content_type:
+            return "json", response.json()
+        try:
+            return "json", response.json()
+        except (ValueError, json.JSONDecodeError):
+            return "html", response.text
+
+
+def detect_legacy_rule_mode(book_list_rule: str, response_mode: str) -> str:
+    rule = (book_list_rule or "").strip()
+    if response_mode == "json":
+        return "json"
+    if rule.startswith("/") or rule.startswith("./") or rule.startswith(".//"):
+        return "xpath"
+    return "css"
+
+
+def split_legacy_attr_expression(expression: str) -> tuple[str, str]:
+    text = (expression or "").strip()
+    if "@" not in text:
+        return text, "text"
+    selector, attr = text.rsplit("@", 1)
+    return selector.strip(), attr.strip() or "text"
+
+
+def normalize_css_selector(selector: str) -> str:
+    return selector.replace("&&", " ").replace("||", ",").strip()
+
+
+def resolve_css_chain(nodes: list[Tag], selector: str) -> list[Tag]:
+    current = nodes
+    for raw_part in selector.split("&&"):
+        part = raw_part.strip()
+        if not part:
+            continue
+        alt_parts = [candidate.strip() for candidate in part.split("||") if candidate.strip()]
+        next_nodes: list[Tag] = []
+        for current_node in current:
+            selected: list[Tag] = []
+            for candidate in alt_parts or [part]:
+                index: int | None = None
+                base = candidate
+                match = re.fullmatch(r"(.+?)\.(\d+)$", candidate)
+                if match and not any(token in candidate for token in ("#", "[", ":", ">", "+", "~")):
+                    base = match.group(1).strip()
+                    index = int(match.group(2))
+                node_results = current_node.select(base) if base else [current_node]
+                if index is not None:
+                    node_results = node_results[index:index + 1]
+                if node_results:
+                    selected.extend([node for node in node_results if isinstance(node, Tag)])
+                    break
+            next_nodes.extend(selected)
+        current = next_nodes
+    return current
+
+
+def extract_css_field(node: Tag, expression: str) -> str:
+    selector, attr = split_legacy_attr_expression(expression)
+    targets = [node] if not selector else resolve_css_chain([node], selector)
+    if not targets:
+        return ""
+    target = targets[0]
+    if attr == "text":
+        return target.get_text(" ", strip=True)
+    if attr == "html":
+        return "".join(str(child) for child in target.contents).strip()
+    return str(target.get(attr, "")).strip()
+
+
+def extract_xpath_field(node: Any, expression: str) -> str:
+    selector, attr = split_legacy_attr_expression(expression)
+    xpath_expr = selector or "."
+    if xpath_expr.startswith("//"):
+        xpath_expr = f".{xpath_expr}"
+    results = node.xpath(xpath_expr)
+    if not results:
+        return ""
+    target = results[0]
+    if attr == "text":
+        if isinstance(target, str):
+            return target.strip()
+        return " ".join(part.strip() for part in target.itertext() if part.strip())
+    if attr == "html":
+        if isinstance(target, str):
+            return target.strip()
+        return lxml_html.tostring(target, encoding="unicode").strip()
+    if isinstance(target, str):
+        return target.strip()
+    return str(target.get(attr, "")).strip()
+
+
+def extract_legacy_value(raw_item: Any, expression: str, mode: str, field_name: str) -> str:
+    text = (expression or "").strip()
+    if not text:
+        return ""
+    if any(token in text for token in ("@js:", "<js>", "@json:", "{{", "##")):
+        raise_unsupported_legacy_rule(field_name, text)
+    if mode == "json":
+        path = normalize_legacy_rule_path(text, field_name=field_name, allow_empty=True)
+        value = extract_path(raw_item, path)
+        return "" if value is None else str(value)
+    if mode == "css":
+        return extract_css_field(raw_item, text)
+    if mode == "xpath":
+        return extract_xpath_field(raw_item, text)
+    return ""
+
+
+def extract_legacy_items(payload: Any, book_list_rule: str, mode: str) -> list[Any]:
+    if mode == "json":
+        path = normalize_legacy_rule_path(book_list_rule, field_name="ruleSearch.bookList")
+        return ensure_list(extract_path(payload, path))
+    if mode == "css":
+        soup = BeautifulSoup(str(payload), "lxml")
+        selector = normalize_css_selector(book_list_rule)
+        return [item for item in soup.select(selector) if isinstance(item, Tag)]
+    document = lxml_html.fromstring(str(payload))
+    return ensure_list(document.xpath(book_list_rule))
+
+
+async def search_source_legacy(
+    source_id: int,
+    source_name: str,
+    legacy_config: dict[str, Any],
+    keyword: str,
+    limit_per_source: int,
+) -> dict[str, Any]:
+    response_mode, payload = await perform_legacy_request(
+        str(legacy_config.get("search_url", "")),
+        {"keyword": keyword},
+    )
+    rule_search = legacy_config.get("rule_search", {}) if isinstance(legacy_config, dict) else {}
+    if not isinstance(rule_search, dict):
+        raise ValueError("旧格式书源缺少 `ruleSearch` 配置")
+
+    mode = detect_legacy_rule_mode(str(rule_search.get("bookList", "")), response_mode)
+    raw_items = extract_legacy_items(payload, str(rule_search.get("bookList", "")), mode)[:limit_per_source]
+
+    field_candidates = {
+        "title": rule_search.get("name"),
+        "author": rule_search.get("author"),
+        "cover": rule_search.get("coverUrl") or rule_search.get("cover"),
+        "intro": rule_search.get("intro") or rule_search.get("introHtml"),
+        "detail_url": rule_search.get("bookUrl") or rule_search.get("url"),
+        "book_id": rule_search.get("bookUrl") or rule_search.get("bookId"),
+        "latest_chapter": rule_search.get("lastChapter") or rule_search.get("latestChapter"),
+    }
+
+    normalized_items: list[dict[str, Any]] = []
+    for raw_item in raw_items:
+        mapped = {
+            "source_id": source_id,
+            "source_name": source_name,
+            "title": extract_legacy_value(raw_item, str(field_candidates.get("title", "")), mode, "ruleSearch.name"),
+            "author": extract_legacy_value(raw_item, str(field_candidates.get("author", "")), mode, "ruleSearch.author"),
+            "cover": extract_legacy_value(raw_item, str(field_candidates.get("cover", "")), mode, "ruleSearch.cover"),
+            "intro": extract_legacy_value(raw_item, str(field_candidates.get("intro", "")), mode, "ruleSearch.intro"),
+            "detail_url": extract_legacy_value(raw_item, str(field_candidates.get("detail_url", "")), mode, "ruleSearch.bookUrl"),
+            "book_id": extract_legacy_value(raw_item, str(field_candidates.get("book_id", "")), mode, "ruleSearch.bookId"),
+            "latest_chapter": extract_legacy_value(raw_item, str(field_candidates.get("latest_chapter", "")), mode, "ruleSearch.lastChapter"),
+            "raw": {},
+        }
+        if isinstance(raw_item, dict):
+            mapped["raw"] = raw_item
+        elif isinstance(raw_item, Tag):
+            mapped["raw"] = {"html": str(raw_item)}
+        else:
+            mapped["raw"] = {"value": str(raw_item)}
+        if mapped["title"]:
+            normalized_items.append(mapped)
+
+    return {
+        "source_id": source_id,
+        "source_name": source_name,
+        "success": True,
+        "count": len(normalized_items),
+        "items": normalized_items,
+    }
 
 
 def flatten_for_context(value: Any, prefix: str = "") -> dict[str, str]:
@@ -374,6 +560,16 @@ async def search_source(
     keyword: str,
     limit_per_source: int,
 ) -> dict[str, Any]:
+    legacy_config = source_config.get("legacy")
+    if isinstance(legacy_config, dict):
+        return await search_source_legacy(
+            source_id,
+            source_name,
+            legacy_config,
+            keyword,
+            limit_per_source,
+        )
+
     search_config = source_config["search"]
     items = await execute_mapping_request(
         search_config,
