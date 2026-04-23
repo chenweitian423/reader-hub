@@ -3,6 +3,9 @@ const state = {
     title: "Reader Hub",
     version: "0.0.0",
   },
+  ui: {
+    activePage: "search",
+  },
   sources: [],
   sampleJson: null,
   results: [],
@@ -108,6 +111,10 @@ const elements = {
   backupImportMode: document.querySelector("#backup-import-mode"),
   backupFile: document.querySelector("#backup-file"),
   backupImportBtn: document.querySelector("#backup-import-btn"),
+  toolsVersionBadge: document.querySelector("#tools-version-badge"),
+  menuButtons: Array.from(document.querySelectorAll(".menu-btn")),
+  pagePanels: Array.from(document.querySelectorAll(".page-panel")),
+  keywordChips: Array.from(document.querySelectorAll(".keyword-chip")),
 };
 
 function setStatus(text, type = "idle") {
@@ -236,9 +243,20 @@ function renderSummary() {
 }
 
 function renderAppMeta() {
-  elements.appTitle.textContent = `${state.appMeta.title} ${state.appMeta.version}`;
+  elements.appTitle.textContent = state.appMeta.title;
   elements.appVersionBadge.textContent = `v${state.appMeta.version}`;
+  elements.toolsVersionBadge.textContent = `v${state.appMeta.version}`;
   document.title = `${state.appMeta.title} v${state.appMeta.version}`;
+}
+
+function setActivePage(pageId) {
+  state.ui.activePage = pageId;
+  elements.menuButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.page === pageId);
+  });
+  elements.pagePanels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.id !== `page-${pageId}`);
+  });
 }
 
 async function apiFetch(url, options = {}) {
@@ -881,6 +899,7 @@ async function searchBooks(event) {
   }
 
   setStatus("正在搜索", "loading");
+  setActivePage("search");
   state.results = [];
   renderResults();
   resetReader();
@@ -999,6 +1018,7 @@ async function openBook(book, options = {}) {
 }
 
 async function continueShelfBook(shelfBook) {
+  setActivePage("search");
   await openBook(shelfBook.book, {
     resumeChapter: shelfBook.last_chapter,
     resumeChapterIndex: shelfBook.last_chapter_index,
@@ -1178,6 +1198,11 @@ function handleShelfFilterChange() {
   renderShelf();
 }
 
+function runQuickSearch(keyword) {
+  elements.keywordInput.value = keyword;
+  elements.searchForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+}
+
 elements.importBtn.addEventListener("click", importSources);
 elements.loadSampleBtn.addEventListener("click", loadSampleJson);
 elements.backupExportBtn.addEventListener("click", exportBackup);
@@ -1222,10 +1247,21 @@ elements.backupFile.addEventListener("change", (event) => {
   if (!file) return;
   setStatus(`已选择备份文件: ${file.name}`, "idle");
 });
+elements.menuButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setActivePage(button.dataset.page);
+  });
+});
+elements.keywordChips.forEach((button) => {
+  button.addEventListener("click", () => {
+    runQuickSearch(button.dataset.keyword || "");
+  });
+});
 
 Promise.all([refreshAppMeta(), refreshSources(), refreshShelf(), refreshPreferences()])
   .then(() => {
     resetReader();
+    setActivePage("search");
     renderAppMeta();
     renderSummary();
   })

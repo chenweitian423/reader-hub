@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.5.1`
+当前版本：`1.6.0`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -72,7 +72,7 @@ docker compose up -d
 如果你希望固定到某个发布版本，可以先复制 [`.env.example`](/Users/sky/Documents/test/.env.example) 为 `.env`，然后把：
 
 ```text
-READER_HUB_IMAGE_TAG=1.5.1
+READER_HUB_IMAGE_TAG=1.6.0
 ```
 
 改成你要部署的镜像版本。
@@ -106,7 +106,7 @@ uvicorn app.main:app --reload
 
 - 默认值：`latest`
 - 用途：指定 `docker-compose.yml` 拉取的镜像版本
-- 示例：`1.5.1`
+- 示例：`1.6.0`
 
 ### `READER_HUB_DATABASE_URL`
 
@@ -531,8 +531,8 @@ PUT /api/reader/preferences
 工作流会读取 [VERSION](/Users/sky/Documents/test/VERSION) 文件，并自动推送这些镜像 tag：
 
 - `latest`
-- `1.5.1`
-- `1.5`
+- `1.6.0`
+- `1.6`
 - `sha-<commit>`
 
 ### 本地推送代码
