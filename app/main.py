@@ -10,6 +10,7 @@ from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -275,6 +276,11 @@ def normalize_book_payload(source_id: int, source_name: str, book: dict[str, Any
         "status": book.get("status", ""),
         "raw": book.get("raw", {}),
     }
+    if not str(normalized["book_id"]).strip() and str(normalized["detail_url"]).startswith(("uploaded://", "demo://")):
+        parsed = urlparse(str(normalized["detail_url"]))
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if parsed.netloc == "books" and segments:
+            normalized["book_id"] = segments[0]
     normalized["book_key"] = normalized["book_key"] or build_book_key(source_id, normalized)
     return normalized
 
