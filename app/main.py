@@ -622,9 +622,15 @@ def launch_prefetch_task(
     task.add_done_callback(BACKGROUND_PREFETCH_TASKS.discard)
 
 
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    versioned = (
+        html.replace('href="/static/favicon.svg"', f'href="/static/favicon.svg?v={APP_VERSION}"')
+        .replace('href="/static/styles.css"', f'href="/static/styles.css?v={APP_VERSION}"')
+        .replace('src="/static/app.js"', f'src="/static/app.js?v={APP_VERSION}"')
+    )
+    return HTMLResponse(versioned)
 
 
 @app.get("/api/health")

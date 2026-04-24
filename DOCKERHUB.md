@@ -11,13 +11,13 @@ chenxiaotian423/reader-hub:latest
 当前发布版本：
 
 ```text
-1.15.0
+1.15.1
 ```
 
 每次迭代发布后，镜像会同时生成这些标签：
 
 - `latest`
-- `1.15.0`
+- `1.15.1`
 - `1.15`
 - `sha-<commit>`
 
