@@ -60,6 +60,41 @@ let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["txt", "md", "epub"]);
 const PRIVATE_SITE_PRESETS = {
+  bqg_api: {
+    label: "笔趣阁前端站",
+    values: {
+      name: "笔趣阁前端站示例",
+      description: "适合前端页面 + JSON API 的笔趣阁类站点，可直接接入搜索、目录和正文",
+      base_url: "https://www.bqg496.xyz",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        Accept: "*/*",
+        Referer: "https://www.bqg496.xyz/",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      search_url: "https://www.bqg496.xyz/api/search?q={keyword}",
+      search_list: "data",
+      search_title: "title",
+      search_author: "author",
+      search_cover: "",
+      search_intro: "intro",
+      search_detail_url: "id",
+      search_latest_chapter: "",
+      detail_title: "title",
+      detail_author: "author",
+      detail_cover: "",
+      detail_intro: "intro",
+      detail_status: "full",
+      toc_list: "list",
+      toc_title: "value",
+      toc_url: "_index",
+      toc_next_url: "",
+      content_body: "txt",
+      content_next_url: "",
+      test_keyword: "凡人修仙",
+    },
+  },
   html_pc: {
     label: "PC HTML 列表站",
     values: {
@@ -2053,7 +2088,7 @@ async function loadSampleJson() {
 }
 
 function loadPrivateSiteSample() {
-  applyPrivateSitePreset("html_pc");
+  applyPrivateSitePreset("bqg_api");
 }
 
 function fillPrivateSiteForm(site) {
