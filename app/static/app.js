@@ -65,6 +65,29 @@ const elements = {
   sourceFile: document.querySelector("#source-file"),
   importBtn: document.querySelector("#import-btn"),
   loadSampleBtn: document.querySelector("#load-sample-btn"),
+  privateSiteName: document.querySelector("#private-site-name"),
+  privateSiteDescription: document.querySelector("#private-site-description"),
+  privateSiteBaseUrl: document.querySelector("#private-site-base-url"),
+  privateSiteHeaders: document.querySelector("#private-site-headers"),
+  privateSiteSearchUrl: document.querySelector("#private-site-search-url"),
+  privateSiteSearchList: document.querySelector("#private-site-search-list"),
+  privateSiteSearchTitle: document.querySelector("#private-site-search-title"),
+  privateSiteSearchAuthor: document.querySelector("#private-site-search-author"),
+  privateSiteSearchCover: document.querySelector("#private-site-search-cover"),
+  privateSiteSearchIntro: document.querySelector("#private-site-search-intro"),
+  privateSiteSearchDetailUrl: document.querySelector("#private-site-search-detail-url"),
+  privateSiteSearchLatest: document.querySelector("#private-site-search-latest"),
+  privateSiteTocList: document.querySelector("#private-site-toc-list"),
+  privateSiteTocTitle: document.querySelector("#private-site-toc-title"),
+  privateSiteTocUrl: document.querySelector("#private-site-toc-url"),
+  privateSiteContentBody: document.querySelector("#private-site-content-body"),
+  privateSiteContentNext: document.querySelector("#private-site-content-next"),
+  privateSiteTestKeyword: document.querySelector("#private-site-test-keyword"),
+  privateSiteSampleBtn: document.querySelector("#private-site-sample-btn"),
+  privateSiteTestBtn: document.querySelector("#private-site-test-btn"),
+  privateSiteImportBtn: document.querySelector("#private-site-import-btn"),
+  privateSiteGenerateBtn: document.querySelector("#private-site-generate-btn"),
+  privateSitePreview: document.querySelector("#private-site-preview"),
   sourceList: document.querySelector("#source-list"),
   sourceCount: document.querySelector("#source-count"),
   shelfList: document.querySelector("#shelf-list"),
@@ -1282,7 +1305,10 @@ function renderSources() {
     const deleteBtn = fragment.querySelector(".delete-btn");
     const config = source.config || {};
     const summaryParts = [];
-    if (config.legacy) {
+    if (config.private_site) {
+      summaryParts.push("私有站点");
+    }
+    if (config.legacy && config.legacy.format !== "private_site") {
       summaryParts.push("旧格式兼容");
     }
     summaryParts.push(sourceSupportsReadingConfig(config) ? "支持阅读" : "仅搜索");
@@ -1868,6 +1894,183 @@ async function loadSampleJson() {
     state.sampleJson = await response.text();
   }
   elements.sourceJson.value = state.sampleJson;
+}
+
+function loadPrivateSiteSample() {
+  elements.privateSiteName.value = "私有站点示例";
+  elements.privateSiteDescription.value = "示例规则，适合从常见 HTML 搜索页开始接入";
+  elements.privateSiteBaseUrl.value = "https://books.example.com";
+  elements.privateSiteHeaders.value = JSON.stringify(
+    {
+      "User-Agent": "ReaderHub Private Connector/1.0",
+    },
+    null,
+    2,
+  );
+  elements.privateSiteSearchUrl.value = "https://books.example.com/search?keyword={keyword}";
+  elements.privateSiteSearchList.value = ".search-list .book-item";
+  elements.privateSiteSearchTitle.value = ".book-title@text";
+  elements.privateSiteSearchAuthor.value = ".book-author@text";
+  elements.privateSiteSearchCover.value = "img@src";
+  elements.privateSiteSearchIntro.value = ".book-intro@text";
+  elements.privateSiteSearchDetailUrl.value = ".book-title@href";
+  elements.privateSiteSearchLatest.value = ".book-latest@text";
+  elements.privateSiteTocList.value = ".chapter-list li";
+  elements.privateSiteTocTitle.value = "a@text";
+  elements.privateSiteTocUrl.value = "a@href";
+  elements.privateSiteContentBody.value = "#content@html";
+  elements.privateSiteContentNext.value = "";
+  elements.privateSiteTestKeyword.value = "凡人修仙";
+  elements.privateSitePreview.className = "private-site-preview empty";
+  elements.privateSitePreview.textContent =
+    "示例规则已填好。你可以先点“测试搜索”，确认命中后再导入。";
+}
+
+function parsePrivateSiteHeaders() {
+  const raw = elements.privateSiteHeaders.value.trim();
+  if (!raw) return {};
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new Error("请求头必须是 JSON 对象");
+    }
+    return Object.fromEntries(
+      Object.entries(payload).map(([key, value]) => [String(key), String(value)]),
+    );
+  } catch (error) {
+    throw new Error(`请求头 JSON 解析失败: ${error.message}`);
+  }
+}
+
+function buildPrivateSitePayload() {
+  return {
+    name: elements.privateSiteName.value.trim(),
+    description: elements.privateSiteDescription.value.trim(),
+    enabled: true,
+    base_url: elements.privateSiteBaseUrl.value.trim(),
+    headers: parsePrivateSiteHeaders(),
+    search_url: elements.privateSiteSearchUrl.value.trim(),
+    search_list: elements.privateSiteSearchList.value.trim(),
+    search_title: elements.privateSiteSearchTitle.value.trim(),
+    search_author: elements.privateSiteSearchAuthor.value.trim(),
+    search_cover: elements.privateSiteSearchCover.value.trim(),
+    search_intro: elements.privateSiteSearchIntro.value.trim(),
+    search_detail_url: elements.privateSiteSearchDetailUrl.value.trim(),
+    search_latest_chapter: elements.privateSiteSearchLatest.value.trim(),
+    detail_title: "",
+    detail_author: "",
+    detail_cover: "",
+    detail_intro: "",
+    detail_status: "",
+    toc_list: elements.privateSiteTocList.value.trim(),
+    toc_title: elements.privateSiteTocTitle.value.trim(),
+    toc_url: elements.privateSiteTocUrl.value.trim(),
+    content_body: elements.privateSiteContentBody.value.trim(),
+    content_next_url: elements.privateSiteContentNext.value.trim(),
+  };
+}
+
+function renderPrivateSitePreview(payload) {
+  const items = payload?.items || [];
+  if (!items.length) {
+    elements.privateSitePreview.className = "private-site-preview empty";
+    elements.privateSitePreview.textContent =
+      "测试完成，但当前关键词没有命中书籍。你可以换个关键词，或者检查搜索列表和书名规则。";
+    return;
+  }
+
+  const supportText = payload.supports_reading ? "支持目录与正文抓取" : "当前仅验证了搜索规则";
+  const itemsHtml = items
+    .map(
+      (item) => `
+        <article class="private-site-preview-item">
+          <strong>${item.title || "未命名书籍"}</strong>
+          <span>${item.author || "作者待补充"}</span>
+          <span>${item.latest_chapter || "暂无最新章节"}</span>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.privateSitePreview.className = "private-site-preview";
+  elements.privateSitePreview.innerHTML = `
+    <div class="private-site-preview-head">
+      <span class="badge">命中 ${payload.count} 本</span>
+      <span class="badge">${supportText}</span>
+    </div>
+    <div class="private-site-preview-list">${itemsHtml}</div>
+  `;
+}
+
+async function testPrivateSite() {
+  const keyword = elements.privateSiteTestKeyword.value.trim();
+  if (!keyword) {
+    setStatus("请先填写测试关键词", "error");
+    return;
+  }
+
+  elements.privateSiteTestBtn.disabled = true;
+  setStatus("正在测试私有站点规则", "loading");
+  try {
+    const payload = await apiFetch("/api/sources/private-site/test", {
+      method: "POST",
+      body: JSON.stringify({
+        site: buildPrivateSitePayload(),
+        keyword,
+        limit: 5,
+      }),
+    });
+    renderPrivateSitePreview(payload);
+    setStatus(
+      payload.count
+        ? `测试成功，命中 ${payload.count} 本书`
+        : "测试完成，但当前关键词没有命中结果",
+      payload.count ? "success" : "idle",
+    );
+  } catch (error) {
+    elements.privateSitePreview.className = "private-site-preview empty";
+    elements.privateSitePreview.textContent = error.message;
+    setStatus(error.message, "error");
+  } finally {
+    elements.privateSiteTestBtn.disabled = false;
+  }
+}
+
+async function generatePrivateSiteJson() {
+  elements.privateSiteGenerateBtn.disabled = true;
+  setStatus("正在生成私有站点书源 JSON", "loading");
+  try {
+    const payload = await apiFetch("/api/sources/private-site/preview", {
+      method: "POST",
+      body: JSON.stringify(buildPrivateSitePayload()),
+    });
+    elements.sourceJson.value = JSON.stringify([payload], null, 2);
+    setStatus("已生成标准书源 JSON，你也可以再手动微调", "success");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    elements.privateSiteGenerateBtn.disabled = false;
+  }
+}
+
+async function importPrivateSite() {
+  elements.privateSiteImportBtn.disabled = true;
+  setStatus("正在导入私有站点", "loading");
+  try {
+    await apiFetch("/api/sources/private-site", {
+      method: "POST",
+      body: JSON.stringify(buildPrivateSitePayload()),
+    });
+    await refreshSources();
+    setActivePage("search");
+    renderSourceStatus([]);
+    setStatus("私有站点已导入，现在可以直接搜索", "success");
+    elements.keywordInput.focus();
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    elements.privateSiteImportBtn.disabled = false;
+  }
 }
 
 async function importSources() {
@@ -2483,6 +2686,10 @@ async function handleDroppedUploadFiles(event) {
 loadRecentSearches();
 renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
+elements.privateSiteSampleBtn.addEventListener("click", loadPrivateSiteSample);
+elements.privateSiteTestBtn.addEventListener("click", testPrivateSite);
+elements.privateSiteImportBtn.addEventListener("click", importPrivateSite);
+elements.privateSiteGenerateBtn.addEventListener("click", generatePrivateSiteJson);
 elements.shelfUploadBtn.addEventListener("click", uploadBooksToShelf);
 elements.shelfUploadClearBtn.addEventListener("click", () => {
   clearPendingUploadFiles();

@@ -550,6 +550,105 @@
 
           <section class="card">
             <div class="section-head">
+              <div>
+                <h2>私有站点接入</h2>
+                <p class="hint">适合接入你自己维护或明确授权的小说站点。先测试搜索，再一键导入成书源。</p>
+              </div>
+              <button id="private-site-sample-btn" class="ghost-btn" type="button">填入示例</button>
+            </div>
+            <div class="meta-grid private-site-grid">
+              <label class="setting-item">
+                <span>站点名称</span>
+                <input id="private-site-name" type="text" placeholder="例如：我的私有书站" />
+              </label>
+              <label class="setting-item">
+                <span>站点说明</span>
+                <input id="private-site-description" type="text" placeholder="例如：仅供内部接入的站点" />
+              </label>
+              <label class="setting-item">
+                <span>站点首页</span>
+                <input id="private-site-base-url" type="text" placeholder="https://books.example.com" />
+              </label>
+              <label class="setting-item">
+                <span>测试关键词</span>
+                <input id="private-site-test-keyword" type="text" placeholder="例如：凡人修仙" />
+              </label>
+            </div>
+            <div class="meta-grid private-site-grid">
+              <label class="setting-item">
+                <span>搜索地址</span>
+                <input id="private-site-search-url" type="text" placeholder="https://books.example.com/search?keyword={keyword}" />
+              </label>
+              <label class="setting-item">
+                <span>请求头 JSON</span>
+                <textarea id="private-site-headers" placeholder='可选，例如：{"User-Agent":"ReaderHub Bot/1.0"}'></textarea>
+              </label>
+            </div>
+            <div class="meta-grid private-site-grid">
+              <label class="setting-item">
+                <span>搜索结果列表</span>
+                <input id="private-site-search-list" type="text" placeholder=".search-list .book-item 或 $.data.list" />
+              </label>
+              <label class="setting-item">
+                <span>书名规则</span>
+                <input id="private-site-search-title" type="text" placeholder=".title@text" />
+              </label>
+              <label class="setting-item">
+                <span>作者规则</span>
+                <input id="private-site-search-author" type="text" placeholder=".author@text" />
+              </label>
+              <label class="setting-item">
+                <span>详情链接规则</span>
+                <input id="private-site-search-detail-url" type="text" placeholder=".title@href" />
+              </label>
+              <label class="setting-item">
+                <span>封面规则</span>
+                <input id="private-site-search-cover" type="text" placeholder="img@src" />
+              </label>
+              <label class="setting-item">
+                <span>简介规则</span>
+                <input id="private-site-search-intro" type="text" placeholder=".intro@text" />
+              </label>
+              <label class="setting-item">
+                <span>最新章节规则</span>
+                <input id="private-site-search-latest" type="text" placeholder=".latest@text" />
+              </label>
+            </div>
+            <div class="meta-grid private-site-grid">
+              <label class="setting-item">
+                <span>目录列表规则</span>
+                <input id="private-site-toc-list" type="text" placeholder=".chapter-list li" />
+              </label>
+              <label class="setting-item">
+                <span>章节标题规则</span>
+                <input id="private-site-toc-title" type="text" placeholder="a@text" />
+              </label>
+              <label class="setting-item">
+                <span>章节链接规则</span>
+                <input id="private-site-toc-url" type="text" placeholder="a@href" />
+              </label>
+              <label class="setting-item">
+                <span>正文规则</span>
+                <input id="private-site-content-body" type="text" placeholder="#content@html 或 $.data.content" />
+              </label>
+              <label class="setting-item">
+                <span>下一页正文规则</span>
+                <input id="private-site-content-next" type="text" placeholder="可选：.next@href" />
+              </label>
+            </div>
+            <p class="hint">规则可写 JSON 路径、CSS 选择器或 XPath 表达式。搜索地址里用 <code>{keyword}</code> 作为关键词占位符。</p>
+            <div class="inline-actions">
+              <button id="private-site-test-btn" class="ghost-btn" type="button">测试搜索</button>
+              <button id="private-site-import-btn" type="button">导入私有站点</button>
+              <button id="private-site-generate-btn" class="ghost-btn" type="button">生成到 JSON</button>
+            </div>
+            <div id="private-site-preview" class="private-site-preview empty">
+              这里会显示测试命中的书籍预览，以及当前站点是否支持目录和正文抓取。
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
               <h2>导入书源</h2>
               <button id="load-sample-btn" class="ghost-btn" type="button">
                 填入示例

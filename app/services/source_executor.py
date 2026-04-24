@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup, Tag
 from lxml import html as lxml_html
 from pydantic import ValidationError
 
-from app.schemas import BookSourceImport, RequestConfig
+from app.schemas import BookSourceImport, PrivateSiteSourceRequest, RequestConfig
 from app.services.demo_library import get_demo_book, search_demo_books
 from app.services.uploaded_library import perform_uploaded_request
 
@@ -230,6 +230,107 @@ def convert_legacy_source_payload(item: dict[str, Any]) -> BookSourceImport:
             "rule_search": search_rule,
             "raw": item,
         },
+    }
+    return BookSourceImport.model_validate(payload)
+
+
+def build_private_site_source_import(site: PrivateSiteSourceRequest) -> BookSourceImport:
+    if not site.name.strip():
+        raise ValueError("私有站点名称不能为空")
+    if not site.base_url.strip():
+        raise ValueError("站点首页地址不能为空")
+    if not site.search_url.strip():
+        raise ValueError("搜索地址不能为空")
+    if not site.search_list.strip():
+        raise ValueError("搜索结果列表规则不能为空")
+    if not site.search_title.strip():
+        raise ValueError("书名规则不能为空")
+    if any(value.strip() for value in (site.toc_list, site.toc_title, site.toc_url)) and not all(
+        value.strip() for value in (site.toc_list, site.toc_title, site.toc_url)
+    ):
+        raise ValueError("如果要接入阅读能力，请把目录列表、章节标题和章节链接规则一起填完整")
+
+    description = site.description.strip() or f"私有站点接入 · {site.base_url.strip()}"
+    rule_search = {
+        "bookList": site.search_list.strip(),
+        "name": site.search_title.strip(),
+    }
+    optional_search_fields = {
+        "author": site.search_author,
+        "coverUrl": site.search_cover,
+        "intro": site.search_intro,
+        "bookUrl": site.search_detail_url,
+        "lastChapter": site.search_latest_chapter,
+    }
+    for field, value in optional_search_fields.items():
+        if value.strip():
+            rule_search[field] = value.strip()
+
+    raw_config: dict[str, Any] = {
+        "bookSourceUrl": site.base_url.strip(),
+        "header": site.headers,
+        "ruleSearch": rule_search,
+    }
+
+    if any(
+        value.strip()
+        for value in (
+            site.detail_title,
+            site.detail_author,
+            site.detail_cover,
+            site.detail_intro,
+            site.detail_status,
+        )
+    ):
+        rule_book_info = {}
+        detail_field_map = {
+            "name": site.detail_title,
+            "author": site.detail_author,
+            "coverUrl": site.detail_cover,
+            "intro": site.detail_intro,
+            "kind": site.detail_status,
+        }
+        for field, value in detail_field_map.items():
+            if value.strip():
+                rule_book_info[field] = value.strip()
+        raw_config["ruleBookInfo"] = rule_book_info
+
+    if site.toc_list.strip() and site.toc_title.strip() and site.toc_url.strip():
+        raw_config["ruleToc"] = {
+            "chapterList": site.toc_list.strip(),
+            "chapterName": site.toc_title.strip(),
+            "chapterUrl": site.toc_url.strip(),
+        }
+
+    if site.content_body.strip():
+        raw_config["ruleContent"] = {
+            "content": site.content_body.strip(),
+        }
+        if site.content_next_url.strip():
+            raw_config["ruleContent"]["nextContentUrl"] = site.content_next_url.strip()
+
+    payload = {
+        "name": site.name.strip(),
+        "description": description,
+        "enabled": site.enabled,
+        "search": {
+            "method": "GET",
+            "url": "legacy://search",
+            "headers": {},
+            "params": {},
+            "body": {},
+            "result_path": "",
+            "fields": {"title": "title"},
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+        "legacy": {
+            "format": "private_site",
+            "search_url": site.search_url.strip(),
+            "rule_search": rule_search,
+            "raw": raw_config,
+        },
+        "private_site": site.model_dump(),
     }
     return BookSourceImport.model_validate(payload)
 

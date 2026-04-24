@@ -931,6 +931,50 @@ button:disabled {
   background: rgba(255, 255, 255, 0.62);
 }
 
+.private-site-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.private-site-grid textarea {
+  min-height: 120px;
+}
+
+.private-site-preview {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(89, 62, 32, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.private-site-preview.empty {
+  min-height: 120px;
+  place-items: center;
+  color: var(--muted);
+  border-style: dashed;
+}
+
+.private-site-preview-head,
+.private-site-preview-list {
+  display: grid;
+  gap: 10px;
+}
+
+.private-site-preview-head {
+  grid-template-columns: repeat(auto-fit, minmax(140px, max-content));
+  align-items: center;
+}
+
+.private-site-preview-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(89, 62, 32, 0.08);
+  background: rgba(255, 252, 248, 0.88);
+}
+
 .shelf-upload-card {
   display: grid;
   gap: 14px;
@@ -2024,6 +2068,10 @@ button:disabled {
   .result-card,
   .reader-book-card,
   .shelf-item {
+    grid-template-columns: 1fr;
+  }
+
+  .private-site-grid {
     grid-template-columns: 1fr;
   }
 

@@ -36,6 +36,9 @@ from app.schemas import (
     ChapterContentResponse,
     ChapterPrefetchResponse,
     DashboardSummaryRead,
+    PrivateSiteSourceRequest,
+    PrivateSiteTestRequest,
+    PrivateSiteTestResponse,
     PrefetchTaskRead,
     ReaderPreferenceRead,
     ReaderPreferenceUpdate,
@@ -51,6 +54,7 @@ from app.schemas import (
 )
 from app.services.demo_library import demo_library_stats, get_demo_book, search_demo_books
 from app.services.source_executor import (
+    build_private_site_source_import,
     build_context,
     dumps_config,
     execute_mapping_request,
@@ -257,6 +261,28 @@ def serialize_source(source: BookSource) -> BookSourceRead:
         enabled=source.enabled,
         config=loads_config(source.config_json),
     )
+
+
+def upsert_book_source(item: Any, db: Session) -> BookSourceRead:
+    existing = db.query(BookSource).filter(BookSource.name == item.name).first()
+    config = item.model_dump()
+    if existing:
+        existing.description = item.description
+        existing.enabled = item.enabled
+        existing.config_json = dumps_config(config)
+        db.add(existing)
+        db.flush()
+        return serialize_source(existing)
+
+    source = BookSource(
+        name=item.name,
+        description=item.description,
+        enabled=item.enabled,
+        config_json=dumps_config(config),
+    )
+    db.add(source)
+    db.flush()
+    return serialize_source(source)
 
 
 def build_book_key(source_id: int, book: dict[str, Any]) -> str:
@@ -688,27 +714,68 @@ async def import_sources(request: Request, db: Session = Depends(get_db)) -> lis
     imported: list[BookSourceRead] = []
 
     for item in sources_to_import:
-        existing = db.query(BookSource).filter(BookSource.name == item.name).first()
-        config = item.model_dump()
-        if existing:
-            existing.description = item.description
-            existing.enabled = item.enabled
-            existing.config_json = dumps_config(config)
-            db.add(existing)
-            db.flush()
-            imported.append(serialize_source(existing))
-            continue
+        imported.append(upsert_book_source(item, db))
 
-        source = BookSource(
-            name=item.name,
-            description=item.description,
-            enabled=item.enabled,
-            config_json=dumps_config(config),
+    db.commit()
+    return imported
+
+
+@app.post("/api/sources/private-site/test", response_model=PrivateSiteTestResponse)
+async def test_private_site_source(payload: PrivateSiteTestRequest) -> PrivateSiteTestResponse:
+    try:
+        source_import = build_private_site_source_import(payload.site)
+        source_config = source_import.model_dump()
+        search_result = await search_source(
+            source_id=0,
+            source_name=source_import.name,
+            source_config=source_config,
+            keyword=payload.keyword.strip(),
+            limit_per_source=max(1, min(payload.limit, 10)),
         )
-        db.add(source)
-        db.flush()
-        imported.append(serialize_source(source))
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"站点配置校验失败: {format_validation_error(exc)}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"站点测试失败: {exc}") from exc
 
+    items = [
+        normalize_book_payload(0, source_import.name, item)
+        for item in search_result.get("items", [])
+    ]
+    return PrivateSiteTestResponse(
+        success=True,
+        supports_reading=legacy_source_supports_reading(source_config),
+        count=len(items),
+        items=items,
+        source_payload=source_config,
+    )
+
+
+@app.post("/api/sources/private-site/preview")
+async def preview_private_site_source(payload: PrivateSiteSourceRequest) -> dict[str, Any]:
+    try:
+        source_import = build_private_site_source_import(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"站点配置校验失败: {format_validation_error(exc)}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return source_import.model_dump()
+
+
+@app.post("/api/sources/private-site", response_model=BookSourceRead)
+async def import_private_site_source(
+    payload: PrivateSiteSourceRequest,
+    db: Session = Depends(get_db),
+) -> BookSourceRead:
+    try:
+        source_import = build_private_site_source_import(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"站点配置校验失败: {format_validation_error(exc)}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    imported = upsert_book_source(source_import, db)
     db.commit()
     return imported
 

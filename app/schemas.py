@@ -29,6 +29,7 @@ class BookSourceImport(BaseModel):
     chapters: Optional[RequestConfig] = None
     content: Optional[RequestConfig] = None
     legacy: Optional[dict[str, Any]] = None
+    private_site: Optional[dict[str, Any]] = None
 
 
 class BookSourceRead(BaseModel):
@@ -49,6 +50,32 @@ class BookSourceUpdate(BaseModel):
 class SourceBulkDeleteRequest(BaseModel):
     source_ids: list[int] = Field(default_factory=list)
     delete_all: bool = False
+
+
+class PrivateSiteSourceRequest(BaseModel):
+    name: str
+    description: str = ""
+    enabled: bool = True
+    base_url: str
+    headers: dict[str, str] = Field(default_factory=dict)
+    search_url: str
+    search_list: str
+    search_title: str
+    search_author: str = ""
+    search_cover: str = ""
+    search_intro: str = ""
+    search_detail_url: str = ""
+    search_latest_chapter: str = ""
+    detail_title: str = ""
+    detail_author: str = ""
+    detail_cover: str = ""
+    detail_intro: str = ""
+    detail_status: str = ""
+    toc_list: str = ""
+    toc_title: str = ""
+    toc_url: str = ""
+    content_body: str = ""
+    content_next_url: str = ""
 
 
 class SearchRequest(BaseModel):
@@ -86,6 +113,20 @@ class SearchResponse(BaseModel):
     total: int
     items: list[SearchResultItem]
     sources: list[SearchSourceSummary]
+
+
+class PrivateSiteTestRequest(BaseModel):
+    site: PrivateSiteSourceRequest
+    keyword: str
+    limit: int = 5
+
+
+class PrivateSiteTestResponse(BaseModel):
+    success: bool = True
+    supports_reading: bool = False
+    count: int = 0
+    items: list[SearchResultItem] = Field(default_factory=list)
+    source_payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class BookOpenRequest(BaseModel):
