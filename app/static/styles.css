@@ -1757,10 +1757,10 @@ button:disabled {
 
 .reader-drawer {
   position: fixed;
-  top: 18px;
-  right: 18px;
-  bottom: 18px;
-  width: min(420px, calc(100vw - 36px));
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(460px, calc(100vw - 24px));
   border-radius: 28px;
   border: 1px solid rgba(79, 60, 35, 0.12);
   box-shadow: 0 28px 70px rgba(18, 11, 7, 0.24);
@@ -1776,13 +1776,41 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   align-items: start;
-  padding: 22px 22px 14px;
+  padding: 18px 18px 14px;
   border-bottom: 1px solid rgba(79, 60, 35, 0.08);
 }
 
 .reader-drawer .chapter-list {
-  padding: 18px;
+  padding: 14px 14px 18px;
   overflow: auto;
+  align-content: start;
+}
+
+.reader-drawer .chapter-item {
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 72px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  align-items: center;
+  overflow: visible;
+}
+
+.reader-drawer .chapter-index {
+  width: 44px;
+  font-size: 17px;
+  align-self: center;
+}
+
+.reader-drawer .chapter-title {
+  display: block;
+  width: 100%;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.reader-drawer .chapter-item.active {
+  box-shadow: 0 16px 30px rgba(143, 63, 36, 0.18);
 }
 
 .reader-section[data-reader-theme="mist"] .reader-main,
