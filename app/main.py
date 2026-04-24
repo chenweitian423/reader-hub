@@ -288,6 +288,8 @@ def normalize_book_payload(source_id: int, source_name: str, book: dict[str, Any
         "book_key": book.get("book_key", ""),
         "latest_chapter": book.get("latest_chapter", ""),
         "status": book.get("status", ""),
+        "import_channel": book.get("import_channel", ""),
+        "import_channel_label": book.get("import_channel_label", ""),
         "raw": book.get("raw", {}),
     }
     if not str(normalized["book_id"]).strip() and str(normalized["detail_url"]).startswith(("uploaded://", "demo://")):
@@ -338,6 +340,7 @@ def serialize_prefetch_task(task: PrefetchTask) -> PrefetchTaskRead:
 
 
 def serialize_shelf_book(book: ShelfBook, cached_count: int = 0) -> ShelfBookRead:
+    normalized_book = loads_config(book.book_json)
     return ShelfBookRead(
         book_key=book.book_key,
         source_id=book.source_id,
@@ -352,7 +355,9 @@ def serialize_shelf_book(book: ShelfBook, cached_count: int = 0) -> ShelfBookRea
         tags=loads_config(book.tags_json),
         status=book.status,
         latest_chapter=book.latest_chapter,
-        book=loads_config(book.book_json),
+        import_channel=normalized_book.get("import_channel", ""),
+        import_channel_label=normalized_book.get("import_channel_label", ""),
+        book=normalized_book,
         last_chapter=loads_config(book.last_chapter_json),
         last_chapter_title=book.last_chapter_title,
         last_chapter_index=book.last_chapter_index,
@@ -744,7 +749,7 @@ async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]
 async def upload_books_api_info(request: Request) -> Any:
     base_url = str(request.base_url).rstrip("/")
     payload = {
-        "message": "这个地址用于局域网书籍上传。请使用 POST multipart/form-data，而不是直接在浏览器里 GET 打开。",
+        "message": "这个地址用于局域网书籍上传。浏览器直接打开会看到上传网页，程序调用时请继续使用 POST multipart/form-data。",
         "method": "POST",
         "content_type": "multipart/form-data",
         "endpoint": f"{base_url}/api/library/uploads",
@@ -752,6 +757,7 @@ async def upload_books_api_info(request: Request) -> Any:
             "files": "一个或多个书籍文件",
             "category": "可选，导入后的默认分类",
             "tags": "可选，逗号分隔的默认标签",
+            "import_channel": "可选，导入来源标记",
         },
         "supported_formats": sorted(item.lstrip('.') for item in SUPPORTED_UPLOAD_SUFFIXES),
         "example_curl": (
@@ -879,6 +885,23 @@ async def upload_books_api_info(request: Request) -> Any:
         background: rgba(255, 253, 250, 0.78);
         border: 1px solid rgba(89, 62, 32, 0.1);
       }}
+      .progress {{
+        display: grid;
+        gap: 10px;
+      }}
+      .progress-track {{
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(89, 62, 32, 0.08);
+        overflow: hidden;
+      }}
+      .progress-bar {{
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(135deg, #c25b2f, #8e3716);
+        transition: width 120ms ease;
+      }}
       .selection.empty, .result.empty {{
         min-height: 120px;
         place-items: center;
@@ -972,6 +995,15 @@ async def upload_books_api_info(request: Request) -> Any:
           <span class="badge">接口地址</span>
           <code>{payload["endpoint"]}</code>
         </div>
+        <div class="progress" style="margin-top: 14px;">
+          <div class="footer">
+            <strong>局域网上传进度</strong>
+            <span id="progress-text" class="muted">等待选择文件</span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+        </div>
         <div class="footer" style="margin-top: 14px;">
           <button id="upload-btn" type="button">上传到书架</button>
           <span id="status" class="muted">等待选择文件</span>
@@ -990,6 +1022,8 @@ async def upload_books_api_info(request: Request) -> Any:
       const selection = document.querySelector("#selection");
       const result = document.querySelector("#result");
       const status = document.querySelector("#status");
+      const progressText = document.querySelector("#progress-text");
+      const progressBar = document.querySelector("#progress-bar");
       const categoryInput = document.querySelector("#category-input");
       const tagsInput = document.querySelector("#tags-input");
 
@@ -1049,6 +1083,12 @@ async def upload_books_api_info(request: Request) -> Any:
         status.className = type ? `status ${{type}}` : "muted";
       }}
 
+      function setProgress(percent, text = "等待选择文件") {{
+        const normalized = Math.max(0, Math.min(100, Number(percent) || 0));
+        progressBar.style.width = `${{normalized}}%`;
+        progressText.textContent = text;
+      }}
+
       function mergeFiles(files) {{
         const map = new Map(state.files.map((file) => [getKey(file), file]));
         let ignored = 0;
@@ -1066,6 +1106,7 @@ async def upload_books_api_info(request: Request) -> Any:
           setStatus(`已忽略 ${{ignored}} 个不支持的文件`, "error");
         }} else if (files.length) {{
           setStatus(`已加入 ${{files.length}} 个待上传文件`);
+          setProgress(0, `准备上传 ${{state.files.length}} 个文件`);
         }}
       }}
 
@@ -1150,6 +1191,29 @@ async def upload_books_api_info(request: Request) -> Any:
         directoryInput.click();
       }}
 
+      function sendMultipartUpload(url, formData) {{
+        return new Promise((resolve, reject) => {{
+          const request = new XMLHttpRequest();
+          request.open("POST", url);
+          request.responseType = "json";
+          request.upload.addEventListener("progress", (event) => {{
+            if (!event.lengthComputable) return;
+            const percent = Math.round((event.loaded / event.total) * 100);
+            setProgress(percent, `局域网上传中 ${{percent}}%`);
+          }});
+          request.addEventListener("load", () => {{
+            const payload = request.response || {{}};
+            if (request.status >= 200 && request.status < 300) {{
+              resolve(payload);
+              return;
+            }}
+            reject(new Error(payload.detail || request.statusText || "上传失败"));
+          }});
+          request.addEventListener("error", () => reject(new Error("上传失败，请检查网络连接")));
+          request.send(formData);
+        }});
+      }}
+
       async function uploadFiles() {{
         if (!state.files.length) {{
           setStatus("请先选择要上传的书籍文件", "error");
@@ -1159,11 +1223,12 @@ async def upload_books_api_info(request: Request) -> Any:
         state.files.forEach((file) => formData.append("files", file, getRelativePath(file)));
         formData.append("category", categoryInput.value.trim());
         formData.append("tags", tagsInput.value.trim());
+        formData.append("import_channel", "lan_device");
+        setProgress(0, `准备上传 ${{state.files.length}} 个文件`);
         setStatus("正在上传到书架...");
         try {{
-          const response = await fetch("{payload["endpoint"]}", {{ method: "POST", body: formData }});
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.detail || "上传失败");
+          const data = await sendMultipartUpload("{payload["endpoint"]}", formData);
+          setProgress(100, "上传完成");
           result.className = "card result";
           result.innerHTML = `
             <div class="footer">
@@ -1190,6 +1255,7 @@ async def upload_books_api_info(request: Request) -> Any:
         }} catch (error) {{
           result.className = "card result";
           result.textContent = error.message || "上传失败";
+          setProgress(0, error.message || "上传失败");
           setStatus(error.message || "上传失败", "error");
         }}
       }}
@@ -1199,6 +1265,7 @@ async def upload_books_api_info(request: Request) -> Any:
       document.querySelector("#clear-files").addEventListener("click", () => {{
         state.files = [];
         renderSelection();
+        setProgress(0, "等待选择文件");
         setStatus("已清空待上传文件");
       }});
       document.querySelector("#upload-btn").addEventListener("click", uploadFiles);
@@ -1248,6 +1315,7 @@ async def upload_books_api_info(request: Request) -> Any:
       }});
 
       renderSelection();
+      setProgress(0, "等待选择文件");
     </script>
   </body>
 </html>"""
@@ -1259,6 +1327,7 @@ async def upload_books_to_shelf(
     files: list[UploadFile] = File(...),
     category: str = Form(""),
     tags: str = Form(""),
+    import_channel: str = Form(""),
     db: Session = Depends(get_db),
 ) -> UploadedBookImportResponse:
     if not files:
@@ -1277,7 +1346,7 @@ async def upload_books_to_shelf(
             raise HTTPException(status_code=400, detail=f"文件 `{filename}` 为空，无法导入")
         try:
             parsed_book = parse_uploaded_book(filename, raw)
-            saved_book = save_uploaded_book(filename, parsed_book)
+            saved_book = save_uploaded_book(filename, parsed_book, import_channel=import_channel or "api_client")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1297,6 +1366,8 @@ async def upload_books_to_shelf(
                 source_name=source.name,
                 chapter_count=len(parsed_book.get("chapters", [])),
                 format=parsed_book.get("format", ""),
+                import_channel=saved_book.get("import_channel", ""),
+                import_channel_label=saved_book.get("import_channel_label", ""),
             )
         )
 

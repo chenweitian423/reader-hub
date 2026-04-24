@@ -63,6 +63,8 @@ class SearchResultItem(BaseModel):
     book_id: str = ""
     book_key: str = ""
     latest_chapter: str = ""
+    import_channel: str = ""
+    import_channel_label: str = ""
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -102,6 +104,8 @@ class BookDetail(BaseModel):
     book_key: str = ""
     latest_chapter: str = ""
     status: str = ""
+    import_channel: str = ""
+    import_channel_label: str = ""
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -155,6 +159,8 @@ class ShelfBookRead(BaseModel):
     tags: list[str] = Field(default_factory=list)
     status: str = ""
     latest_chapter: str = ""
+    import_channel: str = ""
+    import_channel_label: str = ""
     book: dict[str, Any] = Field(default_factory=dict)
     last_chapter: dict[str, Any] = Field(default_factory=dict)
     last_chapter_title: str = ""
@@ -257,6 +263,8 @@ class UploadedBookImportItem(BaseModel):
     source_name: str
     chapter_count: int = 0
     format: str = ""
+    import_channel: str = ""
+    import_channel_label: str = ""
 
 
 class UploadedBookImportResponse(BaseModel):

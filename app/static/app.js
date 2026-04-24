@@ -79,8 +79,12 @@ const elements = {
   shelfUploadFilesTrigger: document.querySelector("#shelf-upload-files-trigger"),
   shelfUploadDirectoryTrigger: document.querySelector("#shelf-upload-directory-trigger"),
   shelfUploadClearBtn: document.querySelector("#shelf-upload-clear-btn"),
+  shelfUploadProgressText: document.querySelector("#shelf-upload-progress-text"),
+  shelfUploadProgressBar: document.querySelector("#shelf-upload-progress-bar"),
   shelfUploadBtn: document.querySelector("#shelf-upload-btn"),
   uploadApiEndpoint: document.querySelector("#upload-api-endpoint"),
+  uploadPortalLink: document.querySelector("#upload-portal-link"),
+  copyUploadLinkBtn: document.querySelector("#copy-upload-link-btn"),
   sourcePageSize: document.querySelector("#source-page-size"),
   sourcePrevPage: document.querySelector("#source-prev-page"),
   sourceNextPage: document.querySelector("#source-next-page"),
@@ -261,6 +265,16 @@ function formatFileSize(size) {
   return `${value.toFixed(digits)} ${units[index]}`;
 }
 
+function setShelfUploadProgress(percent, text = "等待选择文件") {
+  const normalized = Math.max(0, Math.min(100, Number(percent) || 0));
+  if (elements.shelfUploadProgressBar) {
+    elements.shelfUploadProgressBar.style.width = `${normalized}%`;
+  }
+  if (elements.shelfUploadProgressText) {
+    elements.shelfUploadProgressText.textContent = text;
+  }
+}
+
 function getUploadRelativePath(file) {
   return file.readerHubRelativePath || file.webkitRelativePath || file.name;
 }
@@ -355,6 +369,7 @@ function clearPendingUploadFiles() {
   elements.shelfUploadFile.value = "";
   elements.shelfUploadDirectory.value = "";
   renderPendingUploadFiles();
+  setShelfUploadProgress(0, "等待选择文件");
 }
 
 async function readDirectoryEntry(entry, pathPrefix = "") {
@@ -464,6 +479,29 @@ async function openBrowserDirectoryPicker() {
     return;
   }
   elements.shelfUploadDirectory.click();
+}
+
+function sendMultipartUpload(url, formData, { onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", url);
+    request.responseType = "json";
+    request.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable || typeof onProgress !== "function") return;
+      const percent = Math.round((event.loaded / event.total) * 100);
+      onProgress(percent, event);
+    });
+    request.addEventListener("load", () => {
+      const payload = request.response || {};
+      if (request.status >= 200 && request.status < 300) {
+        resolve(payload);
+        return;
+      }
+      reject(new Error(payload.detail || request.statusText || "上传失败"));
+    });
+    request.addEventListener("error", () => reject(new Error("上传失败，请检查网络连接")));
+    request.send(formData);
+  });
 }
 
 function loadRecentSearches() {
@@ -982,6 +1020,7 @@ function renderResultDetail(book) {
 
   [
     { label: "来源", value: book.source_name || "未知来源" },
+    ...(book.import_channel_label ? [{ label: "导入方式", value: book.import_channel_label }] : []),
     { label: "阅读能力", value: isReadableSource(book.source_id) ? "支持直接阅读" : "当前仅支持搜索" },
     { label: "书架状态", value: isBookInShelf(book) ? "已收藏到书架" : "尚未加入书架" },
     { label: "更新状态", value: book.latest_chapter || "暂无最新章节" },
@@ -1049,6 +1088,9 @@ function renderAppMeta() {
   elements.toolsVersionBadge.textContent = `v${state.appMeta.version}`;
   if (elements.uploadApiEndpoint) {
     elements.uploadApiEndpoint.textContent = `${window.location.origin}/api/library/uploads`;
+  }
+  if (elements.uploadPortalLink) {
+    elements.uploadPortalLink.href = `${window.location.origin}/api/library/uploads`;
   }
   document.title = `${state.appMeta.title} v${state.appMeta.version}`;
 }
@@ -1277,6 +1319,12 @@ function renderShelf() {
       const chip = document.createElement("span");
       chip.className = "tag-chip";
       chip.textContent = `分类 · ${book.category}`;
+      tags.appendChild(chip);
+    }
+    if (book.import_channel_label) {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+      chip.textContent = book.import_channel_label;
       tags.appendChild(chip);
     }
     (book.tags || []).forEach((tag) => {
@@ -1792,26 +1840,22 @@ async function uploadBooksToShelf() {
   });
   formData.append("category", elements.shelfUploadCategory.value.trim());
   formData.append("tags", elements.shelfUploadTags.value.trim());
+  formData.append("import_channel", "current_device");
 
   elements.shelfUploadBtn.disabled = true;
+  elements.shelfUploadFilesTrigger.disabled = true;
+  elements.shelfUploadDirectoryTrigger.disabled = true;
+  elements.shelfUploadClearBtn.disabled = true;
+  setShelfUploadProgress(0, `准备上传 ${files.length} 个文件`);
   setStatus("正在导入本地书籍", "loading");
 
   try {
-    const response = await fetch("/api/library/uploads", {
-      method: "POST",
-      body: formData,
+    const payload = await sendMultipartUpload("/api/library/uploads", formData, {
+      onProgress: (percent) => {
+        setShelfUploadProgress(percent, `当前设备上传中 ${percent}%`);
+      },
     });
-    if (!response.ok) {
-      let message = "书籍导入失败";
-      try {
-        const payload = await response.json();
-        message = payload.detail || message;
-      } catch {
-        message = response.statusText || message;
-      }
-      throw new Error(message);
-    }
-    const payload = await response.json();
+    setShelfUploadProgress(100, "上传完成，正在刷新书架");
     await Promise.all([refreshSources(), refreshShelf(), refreshSummary()]);
     setActivePage("shelf");
     const lead = payload.items[0];
@@ -1823,9 +1867,13 @@ async function uploadBooksToShelf() {
     );
     clearPendingUploadFiles();
   } catch (error) {
+    setShelfUploadProgress(0, error.message);
     setStatus(error.message, "error");
   } finally {
     elements.shelfUploadBtn.disabled = false;
+    elements.shelfUploadFilesTrigger.disabled = false;
+    elements.shelfUploadDirectoryTrigger.disabled = false;
+    elements.shelfUploadClearBtn.disabled = !state.ui.pendingUploadFiles.length;
     renderPendingUploadFiles();
   }
 }
@@ -2279,6 +2327,14 @@ elements.shelfUploadDirectoryTrigger.addEventListener("click", () => {
 elements.shelfUploadClearBtn.addEventListener("click", () => {
   clearPendingUploadFiles();
   setStatus("已清空待上传文件", "idle");
+});
+elements.copyUploadLinkBtn?.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(`${window.location.origin}/api/library/uploads`);
+    setStatus("局域网上传页链接已复制", "success");
+  } catch {
+    setStatus("复制失败，请手动复制链接", "error");
+  }
 });
 elements.loadSampleBtn.addEventListener("click", loadSampleJson);
 elements.backupExportBtn.addEventListener("click", exportBackup);

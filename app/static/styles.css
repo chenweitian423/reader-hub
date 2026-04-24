@@ -902,6 +902,21 @@ button:disabled {
   background: rgba(255, 255, 255, 0.62);
 }
 
+.shelf-upload-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(89, 62, 32, 0.08);
+}
+
+.shelf-upload-remote-card {
+  background:
+    radial-gradient(circle at top right, rgba(194, 91, 47, 0.08), transparent 28%),
+    rgba(255, 252, 247, 0.86);
+}
+
 .shelf-upload-dropzone {
   border-radius: 24px;
   border: 1.5px dashed rgba(194, 91, 47, 0.34);
@@ -994,6 +1009,39 @@ button:disabled {
   border-radius: 20px;
   background: rgba(255, 253, 250, 0.78);
   border: 1px solid rgba(89, 62, 32, 0.1);
+}
+
+.shelf-upload-remote-box {
+  display: grid;
+  gap: 12px;
+}
+
+.upload-progress {
+  display: grid;
+  gap: 10px;
+}
+
+.upload-progress-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.upload-progress-track {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(89, 62, 32, 0.08);
+  overflow: hidden;
+}
+
+.upload-progress-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #c25b2f, #8e3716);
+  transition: width 120ms ease;
 }
 
 .shelf-upload-selection-head {

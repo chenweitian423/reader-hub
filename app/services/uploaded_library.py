@@ -18,6 +18,11 @@ from bs4 import BeautifulSoup
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 UPLOADED_BOOKS_DIR = DATA_DIR / "uploaded_books"
 SUPPORTED_UPLOAD_SUFFIXES = {".txt", ".md", ".epub"}
+UPLOAD_CHANNEL_LABELS = {
+    "current_device": "当前设备导入",
+    "lan_device": "局域网设备上传",
+    "api_client": "接口上传",
+}
 
 
 def ensure_uploaded_library_dirs() -> None:
@@ -177,6 +182,7 @@ def parse_epub_book(filename: str, content: bytes) -> dict[str, Any]:
 
 def build_uploaded_book_payload(book_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     chapters = payload.get("chapters", [])
+    import_channel = payload.get("import_channel", "current_device")
     return {
         "id": book_id,
         "book_id": book_id,
@@ -189,12 +195,23 @@ def build_uploaded_book_payload(book_id: str, payload: dict[str, Any]) -> dict[s
         "detail_url": f"uploaded://books/{quote(book_id)}",
         "format": payload.get("format", ""),
         "uploaded_at": payload.get("uploaded_at", ""),
+        "import_channel": import_channel,
+        "import_channel_label": payload.get(
+            "import_channel_label",
+            UPLOAD_CHANNEL_LABELS.get(import_channel, "本地导入"),
+        ),
     }
 
 
-def save_uploaded_book(filename: str, parsed_book: dict[str, Any]) -> dict[str, Any]:
+def save_uploaded_book(
+    filename: str,
+    parsed_book: dict[str, Any],
+    *,
+    import_channel: str = "current_device",
+) -> dict[str, Any]:
     ensure_uploaded_library_dirs()
     book_id = uuid.uuid4().hex
+    import_channel = import_channel.strip() or "current_device"
     payload = {
         "id": book_id,
         "filename": sanitize_filename(filename),
@@ -206,6 +223,8 @@ def save_uploaded_book(filename: str, parsed_book: dict[str, Any]) -> dict[str, 
         "latest_chapter": parsed_book.get("latest_chapter", ""),
         "format": parsed_book.get("format", ""),
         "uploaded_at": datetime.utcnow().isoformat(),
+        "import_channel": import_channel,
+        "import_channel_label": UPLOAD_CHANNEL_LABELS.get(import_channel, "本地导入"),
         "chapters": parsed_book.get("chapters", []),
     }
     (UPLOADED_BOOKS_DIR / f"{book_id}.json").write_text(
