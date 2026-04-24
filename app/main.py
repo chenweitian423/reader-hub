@@ -880,7 +880,7 @@ async def delete_admin_user(
 
 
 @app.get("/api/dashboard/summary", response_model=DashboardSummaryRead)
-async def dashboard_summary(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> DashboardSummaryRead:
+async def dashboard_summary(_: User = Depends(require_user), db: Session = Depends(get_db)) -> DashboardSummaryRead:
     source_count = db.query(func.count(BookSource.id)).scalar() or 0
     enabled_source_count = db.query(func.count(BookSource.id)).filter(BookSource.enabled.is_(True)).scalar() or 0
     shelf_count = db.query(func.count(ShelfBook.id)).scalar() or 0
@@ -1084,7 +1084,7 @@ async def bulk_delete_sources(
 
 
 @app.get("/api/library/books", response_model=list[ShelfBookRead])
-async def list_shelf_books(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[ShelfBookRead]:
+async def list_shelf_books(_: User = Depends(require_user), db: Session = Depends(get_db)) -> list[ShelfBookRead]:
     books = (
         db.query(ShelfBook)
         .order_by(ShelfBook.last_read_at.is_(None), ShelfBook.last_read_at.desc(), ShelfBook.added_at.desc())
@@ -1099,7 +1099,7 @@ async def list_shelf_books(_: User = Depends(require_admin), db: Session = Depen
 
 
 @app.get("/api/library/uploads")
-async def upload_books_api_info(request: Request, _: User = Depends(require_admin)) -> Any:
+async def upload_books_api_info(request: Request, _: User = Depends(require_user)) -> Any:
     base_url = str(request.base_url).rstrip("/")
     payload = {
         "message": "这个地址用于局域网书籍上传。浏览器直接打开会看到上传网页，程序调用时请继续使用 POST multipart/form-data。",
@@ -1681,7 +1681,7 @@ async def upload_books_to_shelf(
     category: str = Form(""),
     tags: str = Form(""),
     import_channel: str = Form(""),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> UploadedBookImportResponse:
     if not files:
@@ -1911,7 +1911,7 @@ async def restore_backup(
 @app.post("/api/library/books", response_model=ShelfBookRead)
 async def add_shelf_book(
     payload: ShelfBookCreate,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ShelfBookRead:
     source = get_source_or_404(payload.source_id, db)
@@ -1931,7 +1931,7 @@ async def add_shelf_book(
 async def update_shelf_book(
     book_key: str,
     payload: ShelfBookUpdate,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ShelfBookRead:
     shelf_book = get_shelf_book_or_404(book_key, db)
@@ -1953,7 +1953,7 @@ async def update_shelf_book(
 @app.delete("/api/library/books/{book_key}")
 async def delete_shelf_book(
     book_key: str,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     shelf_book = get_shelf_book_or_404(book_key, db)
@@ -1967,7 +1967,7 @@ async def delete_shelf_book(
 @app.get("/api/library/books/{book_key}/cached-chapters", response_model=list[CachedChapterRead])
 async def list_cached_chapters(
     book_key: str,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[CachedChapterRead]:
     chapters = (
@@ -1982,7 +1982,7 @@ async def list_cached_chapters(
 @app.get("/api/prefetch-tasks/{task_id}", response_model=PrefetchTaskRead)
 async def get_prefetch_task(
     task_id: str,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> PrefetchTaskRead:
     task = get_prefetch_task_or_404(task_id, db)
@@ -1992,7 +1992,7 @@ async def get_prefetch_task(
 @app.get("/api/library/books/{book_key}/prefetch-tasks/latest", response_model=Optional[PrefetchTaskRead])
 async def get_latest_prefetch_task(
     book_key: str,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> Optional[PrefetchTaskRead]:
     task = (
@@ -2009,7 +2009,7 @@ async def get_latest_prefetch_task(
 @app.delete("/api/library/books/{book_key}/cached-chapters")
 async def clear_cached_chapters(
     book_key: str,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     db.query(CachedChapter).filter(CachedChapter.book_key == book_key).delete(synchronize_session=False)
@@ -2021,7 +2021,7 @@ async def clear_cached_chapters(
 async def create_prefetch_job(
     book_key: str,
     payload: ChapterCacheRequest,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> PrefetchTaskRead:
     source = get_source_or_404(payload.source_id, db)
@@ -2066,7 +2066,7 @@ async def create_prefetch_job(
 async def prefetch_book_chapters(
     book_key: str,
     payload: ChapterCacheRequest,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ChapterPrefetchResponse:
     source = get_source_or_404(payload.source_id, db)
@@ -2116,7 +2116,7 @@ async def prefetch_book_chapters(
 async def update_reading_progress(
     book_key: str,
     payload: ReadingProgressUpdate,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ShelfBookRead:
     source = get_source_or_404(payload.source_id, db)

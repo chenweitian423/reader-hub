@@ -13,7 +13,7 @@
         <p class="eyebrow">账号登录</p>
         <h2>进入 Reader Hub</h2>
         <p class="muted">
-          管理员可管理书源、用户和数据工具；普通用户只保留搜书与阅读界面。
+          管理员可管理书源、用户和数据工具；普通用户可搜书、加入书架、继续阅读并维护自己的阅读习惯。
         </p>
         <form id="login-form" class="auth-form">
           <label class="setting-item">
@@ -26,7 +26,7 @@
           </label>
           <button id="login-submit-btn" type="submit">登录</button>
         </form>
-        <div id="login-status" class="muted">默认管理员：`admin / admin123`，默认用户：`reader / reader123`</div>
+        <div id="login-status" class="muted">默认管理员：admin / admin123，默认用户：reader / reader123</div>
       </div>
     </section>
     <div class="page-shell hidden" id="page-shell">
@@ -34,7 +34,7 @@
         <div class="brand-card">
           <p class="eyebrow">Reader Hub</p>
           <h1 id="app-title">Reader Hub</h1>
-          <p class="brand-subtitle">首页专注搜书与读书，管理功能收进菜单，界面更清爽。</p>
+          <p class="brand-subtitle">像小说站一样搜书、选书、继续阅读，把管理入口单独收进后台。</p>
           <div class="brand-meta-row">
             <span id="app-version-badge" class="badge">v0.0.0</span>
             <span id="status-pill" class="status-pill idle">等待操作</span>
@@ -46,14 +46,18 @@
         </div>
 
         <nav class="menu-card">
-          <p class="menu-title">功能菜单</p>
+          <p class="menu-title">前台导航</p>
           <button class="menu-btn active" type="button" data-page="search">
-            <strong>搜书首页</strong>
-            <span>搜索结果与书城分区</span>
+            <strong>书城首页</strong>
+            <span>搜索、精选和最近更新</span>
           </button>
-          <button class="menu-btn" type="button" data-page="shelf" data-role="admin">
+          <button class="menu-btn" type="button" data-page="shelf">
             <strong>我的书架</strong>
-            <span>收藏、进度、分类与标签</span>
+            <span>收藏、进度与本地导入</span>
+          </button>
+          <button class="menu-btn" type="button" data-page="profile">
+            <strong>个人中心</strong>
+            <span>账号、阅读设置与快捷入口</span>
           </button>
           <button class="menu-btn" type="button" data-page="sources" data-role="admin">
             <strong>书源管理</strong>
@@ -69,19 +73,19 @@
           </button>
         </nav>
 
-        <section class="menu-summary" data-role="admin">
+        <section class="menu-summary">
           <article class="summary-chip">
-            <span>书源</span>
+            <span>可用书源</span>
             <strong id="summary-source-count">0</strong>
             <small id="summary-source-meta" class="muted">已启用 0 个</small>
           </article>
           <article class="summary-chip">
-            <span>书架</span>
+            <span>在架书籍</span>
             <strong id="summary-shelf-count">0</strong>
             <small id="summary-reading-meta" class="muted">进行中 0 本</small>
           </article>
           <article class="summary-chip">
-            <span>缓存</span>
+            <span>缓存章节</span>
             <strong id="summary-cache-count">0</strong>
             <small class="muted">已缓存章节</small>
           </article>
@@ -92,15 +96,16 @@
         <section id="page-search" class="page-panel">
           <section class="hero hero-home">
             <div class="hero-copy">
-              <p class="eyebrow">搜书首页</p>
-              <h2>像真正书城一样找书，但把打开阅读这一步留得足够近</h2>
+              <p class="eyebrow">书城首页</p>
+              <h2>像小说站一样先搜再读，把好书、更新和你的阅读位置都放在首页</h2>
               <p class="muted">
-                首页继续聚焦搜索与阅读，同时补上最近搜索、更新推荐和相关推荐，让它更像一个可逛的书城首页。
+                一次搜索多个书源，首页直接给你热门可读、最近更新和继续阅读入口，体验更接近传统小说站前台。
               </p>
               <div class="quick-keywords">
                 <button class="keyword-chip" type="button" data-keyword="月">试试搜“月”</button>
+                <button class="keyword-chip" type="button" data-keyword="凡人">凡人</button>
+                <button class="keyword-chip" type="button" data-keyword="诡秘">诡秘</button>
                 <button class="keyword-chip" type="button" data-keyword="便利店">便利店</button>
-                <button class="keyword-chip" type="button" data-keyword="林见川">林见川</button>
               </div>
             </div>
             <form id="search-form" class="search-bar hero-search">
@@ -313,13 +318,13 @@
             <div class="reader-page-actions">
               <button id="reader-menu-btn" class="ghost-btn" type="button">更多</button>
               <div id="reader-menu-panel" class="reader-menu-panel hidden">
-                <button id="reader-shelf-btn" class="ghost-btn admin-only" type="button">去书架</button>
+                <button id="reader-shelf-btn" class="ghost-btn" type="button">去书架</button>
                 <button id="reader-drawer-btn" class="ghost-btn" type="button">目录抽屉</button>
                 <button id="reader-sidebar-btn" class="ghost-btn" type="button">收起侧栏</button>
                 <button id="reader-focus-btn" class="ghost-btn" type="button">沉浸模式</button>
-                <button id="toggle-shelf-btn" class="ghost-btn admin-only" type="button">加入书架</button>
-                <button id="cache-book-btn" class="ghost-btn admin-only" type="button">缓存本书</button>
-                <button id="clear-cache-btn" class="ghost-btn admin-only" type="button">清空缓存</button>
+                <button id="toggle-shelf-btn" class="ghost-btn" type="button">加入书架</button>
+                <button id="cache-book-btn" class="ghost-btn" type="button">缓存本书</button>
+                <button id="clear-cache-btn" class="ghost-btn" type="button">清空缓存</button>
               </div>
             </div>
           </section>
@@ -338,7 +343,7 @@
                   </div>
                 </div>
 
-                <section class="card-inline shelf-meta-editor admin-only">
+                <section class="card-inline shelf-meta-editor">
                   <div class="section-head compact">
                     <h2>书架信息</h2>
                   </div>
@@ -468,11 +473,11 @@
           </section>
         </section>
 
-        <section id="page-shelf" class="page-panel hidden" data-role="admin">
+        <section id="page-shelf" class="page-panel hidden">
           <section class="page-header-card">
             <div>
               <p class="eyebrow">我的书架</p>
-              <h2>把收藏、进度和分类整理得更清楚</h2>
+              <h2>把你最近在看的书、本地导入和阅读进度都收进一个地方</h2>
             </div>
             <span id="shelf-count" class="badge">0</span>
           </section>
@@ -482,7 +487,7 @@
               <span class="badge">双入口</span>
             </div>
             <p class="hint">
-              现在已经拆成两个入口：当前设备直接导入，以及同一网络下的其他设备上传。两者都会进入“本地导入书库”，但会保留不同的导入来源标记。
+              当前设备可直接拖入书籍，也支持同一网络的其他设备上传。导入后会进入“本地导入书库”，并保留不同的来源标记。
             </p>
             <div class="shelf-upload-panel">
               <section class="shelf-upload-card">
@@ -571,6 +576,91 @@
             </div>
             <div id="shelf-list" class="shelf-list empty">
               书架还是空的，搜索到喜欢的书后加入书架吧。
+            </div>
+          </section>
+        </section>
+
+        <section id="page-profile" class="page-panel hidden">
+          <section class="page-header-card">
+            <div>
+              <p class="eyebrow">个人中心</p>
+              <h2>把账号信息、阅读设置和快捷入口整理成更像小说站用户页的样子</h2>
+            </div>
+            <span id="profile-role-badge" class="badge">普通用户</span>
+          </section>
+
+          <section class="profile-grid">
+            <article class="card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">账号信息</p>
+                  <h2 id="profile-username">未登录</h2>
+                </div>
+                <span id="profile-role-pill" class="badge">访客</span>
+              </div>
+              <p id="profile-description" class="muted">
+                登录后可以在这里看到当前身份、可用功能和阅读习惯。
+              </p>
+              <div class="profile-stats">
+                <article class="summary-chip">
+                  <span>书源</span>
+                  <strong id="profile-source-count">0</strong>
+                  <small class="muted">当前可搜索</small>
+                </article>
+                <article class="summary-chip">
+                  <span>书架</span>
+                  <strong id="profile-shelf-count">0</strong>
+                  <small class="muted">已加入收藏</small>
+                </article>
+                <article class="summary-chip">
+                  <span>进行中</span>
+                  <strong id="profile-reading-count">0</strong>
+                  <small class="muted">最近在读</small>
+                </article>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">阅读设置</p>
+                  <h2>当前偏好</h2>
+                </div>
+                <span class="badge">同步到阅读器</span>
+              </div>
+              <div class="profile-settings-preview">
+                <div class="detail-fact">
+                  <span>主题</span>
+                  <strong id="profile-theme-value">暖纸</strong>
+                </div>
+                <div class="detail-fact">
+                  <span>字号</span>
+                  <strong id="profile-font-size-value">17px</strong>
+                </div>
+                <div class="detail-fact">
+                  <span>版心宽度</span>
+                  <strong id="profile-width-value">820px</strong>
+                </div>
+                <div class="detail-fact">
+                  <span>行距</span>
+                  <strong id="profile-line-height-value">2.0</strong>
+                </div>
+              </div>
+              <p class="hint">阅读设置仍然在阅读页即时生效，这里会同步显示当前偏好。</p>
+            </article>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">快捷入口</p>
+                <h2>像小说站个人页一样，把常用动作留近一点</h2>
+              </div>
+            </div>
+            <div class="profile-action-grid">
+              <button id="profile-go-search-btn" class="ghost-btn" type="button">去搜书首页</button>
+              <button id="profile-go-shelf-btn" class="ghost-btn" type="button">打开我的书架</button>
+              <button id="profile-go-reader-btn" class="ghost-btn" type="button">继续当前阅读</button>
             </div>
           </section>
         </section>

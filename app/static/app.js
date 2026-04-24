@@ -64,6 +64,11 @@ let prefetchPollTimer = null;
 let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["txt", "md", "epub"]);
+const themeLabelMap = {
+  warm: "暖纸",
+  mist: "雾白",
+  night: "夜读",
+};
 const BQG_STANDARD_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
@@ -477,6 +482,20 @@ const elements = {
   adminNewRole: document.querySelector("#admin-new-role"),
   adminCreateUserBtn: document.querySelector("#admin-create-user-btn"),
   adminUserList: document.querySelector("#admin-user-list"),
+  profileRoleBadge: document.querySelector("#profile-role-badge"),
+  profileUsername: document.querySelector("#profile-username"),
+  profileRolePill: document.querySelector("#profile-role-pill"),
+  profileDescription: document.querySelector("#profile-description"),
+  profileSourceCount: document.querySelector("#profile-source-count"),
+  profileShelfCount: document.querySelector("#profile-shelf-count"),
+  profileReadingCount: document.querySelector("#profile-reading-count"),
+  profileThemeValue: document.querySelector("#profile-theme-value"),
+  profileFontSizeValue: document.querySelector("#profile-font-size-value"),
+  profileWidthValue: document.querySelector("#profile-width-value"),
+  profileLineHeightValue: document.querySelector("#profile-line-height-value"),
+  profileGoSearchBtn: document.querySelector("#profile-go-search-btn"),
+  profileGoShelfBtn: document.querySelector("#profile-go-shelf-btn"),
+  profileGoReaderBtn: document.querySelector("#profile-go-reader-btn"),
   menuButtons: Array.from(document.querySelectorAll(".menu-btn")),
   pagePanels: Array.from(document.querySelectorAll(".page-panel")),
   keywordChips: Array.from(document.querySelectorAll(".keyword-chip")),
@@ -534,6 +553,7 @@ function setAuthState(user) {
   elements.currentUserBadge.textContent = loggedIn
     ? `${state.auth.user.username} · ${userIsAdmin() ? "管理员" : "用户"}`
     : "未登录";
+  renderProfile();
 }
 
 function applyRoleMode() {
@@ -545,7 +565,7 @@ function applyRoleMode() {
     element.classList.toggle("hidden", !admin);
   });
 
-  if (!admin && ["shelf", "sources", "tools", "admin"].includes(state.ui.activePage)) {
+  if (!admin && ["sources", "tools", "admin"].includes(state.ui.activePage)) {
     state.ui.activePage = "search";
   }
   elements.menuButtons.forEach((button) => {
@@ -944,6 +964,7 @@ function setReaderPreferenceVars() {
   elements.contentWidthValue.textContent = `${state.preferences.content_width}px`;
   elements.lineHeightRange.value = String(state.preferences.line_height);
   elements.lineHeightValue.textContent = Number(state.preferences.line_height).toFixed(1);
+  renderProfile();
 }
 
 function currentReaderBook() {
@@ -1092,6 +1113,39 @@ function renderSummary() {
   elements.summaryCacheCount.textContent = String(state.summary.cached_chapter_count);
 }
 
+function renderProfile() {
+  const user = currentUser();
+  if (!user) {
+    elements.profileUsername.textContent = "未登录";
+    elements.profileRoleBadge.textContent = "访客";
+    elements.profileRolePill.textContent = "访客";
+    elements.profileDescription.textContent = "登录后可以在这里看到当前身份、可用功能和阅读习惯。";
+    elements.profileSourceCount.textContent = "0";
+    elements.profileShelfCount.textContent = "0";
+    elements.profileReadingCount.textContent = "0";
+  } else {
+    const roleLabel = userIsAdmin() ? "管理员" : "读者用户";
+    elements.profileUsername.textContent = user.username;
+    elements.profileRoleBadge.textContent = roleLabel;
+    elements.profileRolePill.textContent = roleLabel;
+    elements.profileDescription.textContent = userIsAdmin()
+      ? "你当前拥有完整后台权限，可以管理书源、用户和数据，同时也能从前台像普通读者一样搜书和阅读。"
+      : "你现在使用的是前台读者界面，可以搜书、收藏到书架、继续阅读和调整阅读设置。";
+    elements.profileSourceCount.textContent = String(state.summary.source_count || state.sources.length || 0);
+    elements.profileShelfCount.textContent = String(state.shelfBooks.length || 0);
+    elements.profileReadingCount.textContent = String(
+      state.shelfBooks.filter((book) => book.last_chapter_index >= 0 || book.last_read_at).length,
+    );
+  }
+
+  elements.profileThemeValue.textContent = themeLabelMap[state.preferences.theme] || "暖纸";
+  elements.profileFontSizeValue.textContent = `${state.preferences.font_size}px`;
+  elements.profileWidthValue.textContent = `${state.preferences.content_width}px`;
+  elements.profileLineHeightValue.textContent = Number(state.preferences.line_height).toFixed(1);
+  elements.profileGoShelfBtn.disabled = !currentUser();
+  elements.profileGoReaderBtn.disabled = !state.reader.book;
+}
+
 function setSelectedResult(book) {
   state.ui.selectedResultKey = book?.book_key || null;
 }
@@ -1151,49 +1205,44 @@ function bindHomeSpotlightButtons(payload) {
   elements.homeSpotlightSecondary = document.querySelector("#home-spotlight-secondary");
 
   if (!payload) {
-    elements.homeSpotlightPrimary.textContent = userIsAdmin() ? "去导入书源" : "开始搜索";
-    elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "查看书架" : "填写默认账号";
-    elements.homeSpotlightPrimary.addEventListener("click", () => setActivePage(userIsAdmin() ? "sources" : "search"));
+    elements.homeSpotlightPrimary.textContent = "开始搜索";
+    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightPrimary.addEventListener("click", () => setActivePage("search"));
     elements.homeSpotlightSecondary.addEventListener("click", () => {
-      if (userIsAdmin()) {
-        setActivePage("shelf");
-        return;
-      }
-      elements.keywordInput.focus();
-      elements.loginStatus.textContent = "默认用户：reader / reader123";
+      setActivePage("shelf");
     });
     return;
   }
 
   if (payload.kind === "reading") {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
-    elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "查看书架" : "继续搜索";
+    elements.homeSpotlightSecondary.textContent = "查看书架";
     elements.homeSpotlightPrimary.addEventListener("click", () => {
       setActivePage("reader");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage(userIsAdmin() ? "shelf" : "search"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
     return;
   }
 
   if (payload.kind === "shelf" && payload.shelfBook) {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
-    elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "查看书架" : "继续搜索";
+    elements.homeSpotlightSecondary.textContent = "查看书架";
     elements.homeSpotlightPrimary.addEventListener("click", () => continueShelfBook(payload.shelfBook));
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage(userIsAdmin() ? "shelf" : "search"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
     return;
   }
 
-  elements.homeSpotlightPrimary.textContent = isReadableSource(payload.book.source_id) ? "打开阅读" : userIsAdmin() ? "加入书架" : "查看详情";
-  elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "管理书源" : "继续搜索";
+  elements.homeSpotlightPrimary.textContent = isReadableSource(payload.book.source_id) ? "打开阅读" : "加入书架";
+  elements.homeSpotlightSecondary.textContent = "查看书架";
   elements.homeSpotlightPrimary.addEventListener("click", () => {
     if (isReadableSource(payload.book.source_id)) {
       openBook(payload.book);
-    } else if (userIsAdmin()) {
+    } else {
       toggleShelfBook(payload.book);
     }
   });
-  elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage(userIsAdmin() ? "sources" : "search"));
+  elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
 }
 
 function renderHomeSpotlight() {
@@ -1203,7 +1252,7 @@ function renderHomeSpotlight() {
     elements.homeSpotlightTitle.textContent = "先搜索一本你想看的书";
     elements.homeSpotlightAuthor.textContent = "首页会把当前最值得打开的一本书放在这里。";
     elements.homeSpotlightIntro.textContent =
-      "你可以先导入示例书源，再搜索“月”或“便利店”，这里会自动切换成搜索结果或当前阅读书籍的展示卡。";
+      "你可以直接搜索“月”“凡人”或“诡秘”，这里会自动切换成搜索结果、最近在读或书架里的焦点书。";
     elements.homeSpotlightCover.style.display = "none";
     elements.homeSpotlightCover.removeAttribute("src");
     bindHomeSpotlightButtons(null);
@@ -1389,37 +1438,27 @@ function bindResultDetailButtons(book) {
 
   if (!book) {
     elements.resultDetailPrimary.textContent = "开始搜索";
-    elements.resultDetailSecondary.textContent = userIsAdmin() ? "去书源管理" : "输入关键词";
+    elements.resultDetailSecondary.textContent = "查看书架";
     elements.resultDetailPrimary.addEventListener("click", () => {
       elements.keywordInput.focus();
       setActivePage("search");
     });
-    elements.resultDetailSecondary.addEventListener("click", () => {
-      if (userIsAdmin()) {
-        setActivePage("sources");
-      } else {
-        elements.keywordInput.focus();
-      }
-    });
+    elements.resultDetailSecondary.addEventListener("click", () => setActivePage("shelf"));
     return;
   }
 
   const readable = isReadableSource(book.source_id);
-  elements.resultDetailPrimary.textContent = readable ? "立即阅读" : userIsAdmin() ? "加入书架" : "查看书籍";
-  elements.resultDetailSecondary.textContent = userIsAdmin()
-    ? isBookInShelf(book) ? "前往书架" : "收藏到书架"
-    : "返回搜索";
+  elements.resultDetailPrimary.textContent = readable ? "立即阅读" : "加入书架";
+  elements.resultDetailSecondary.textContent = isBookInShelf(book) ? "前往书架" : "收藏到书架";
   elements.resultDetailPrimary.addEventListener("click", () => {
     if (readable) {
       openBook(book);
-    } else if (userIsAdmin()) {
+    } else {
       toggleShelfBook(book);
     }
   });
   elements.resultDetailSecondary.addEventListener("click", () => {
-    if (!userIsAdmin()) {
-      setActivePage("search");
-    } else if (isBookInShelf(book)) {
+    if (isBookInShelf(book)) {
       setActivePage("shelf");
     } else {
       toggleShelfBook(book);
@@ -1537,6 +1576,7 @@ function renderAppMeta() {
     elements.currentUserBadge.textContent = `${currentUser().username} · ${userIsAdmin() ? "管理员" : "用户"}`;
   }
   document.title = `${state.appMeta.title} v${state.appMeta.version}`;
+  renderProfile();
 }
 
 function setActivePage(pageId) {
@@ -1737,24 +1777,16 @@ async function refreshAdminUsers() {
 
 async function initializeAuthenticatedApp() {
   await refreshSources();
+  await refreshShelf();
   await refreshPreferences();
+  await refreshSummary();
   if (userIsAdmin()) {
-    await refreshShelf();
-    await refreshSummary();
     await refreshAdminUsers();
   } else {
-    state.shelfBooks = [];
-    state.summary = {
-      source_count: 0,
-      enabled_source_count: 0,
-      shelf_count: 0,
-      cached_chapter_count: 0,
-      reading_count: 0,
-    };
-    renderHomeSurface();
-    renderResults();
+    renderAdminUsers([]);
   }
   resetReader();
+  renderProfile();
   setActivePage("search");
 }
 
@@ -2211,11 +2243,9 @@ function renderResults(items = state.results) {
       readBtn.addEventListener("click", () => openBook(item));
     }
 
-    collectBtn.classList.toggle("hidden", !userIsAdmin());
+    collectBtn.classList.remove("hidden");
     collectBtn.textContent = inShelf ? "已在书架" : "加入书架";
-    if (userIsAdmin()) {
-      collectBtn.addEventListener("click", () => toggleShelfBook(item));
-    }
+    collectBtn.addEventListener("click", () => toggleShelfBook(item));
     fragment.querySelector(".result-card").addEventListener("click", (event) => {
       if (event.target.closest("button, a")) return;
       setSelectedResult(item);
@@ -2368,9 +2398,7 @@ async function refreshShelf() {
   renderResults();
   updateReaderShelfButton();
   updateReaderMetadataForm();
-  if (userIsAdmin()) {
-    await refreshSummary();
-  }
+  renderProfile();
 }
 
 async function refreshPreferences() {
@@ -2381,6 +2409,7 @@ async function refreshPreferences() {
 async function refreshSummary() {
   state.summary = await apiFetch("/api/dashboard/summary", { method: "GET", headers: {} });
   renderSummary();
+  renderProfile();
 }
 
 async function refreshCurrentBookCache(bookKey = currentReaderBook() && currentReaderBook().book_key) {
@@ -3114,17 +3143,10 @@ async function openBook(book, options = {}) {
       }),
     });
     renderReaderShell(payload);
-    if (userIsAdmin()) {
-      await refreshCurrentBookCache(payload.book.book_key);
-      const latestTask = await refreshLatestPrefetchTask(payload.book.book_key);
-      if (latestTask && ["pending", "running"].includes(latestTask.status)) {
-        startPrefetchPolling(latestTask.task_id);
-      }
-    } else {
-      state.cachedChapters = [];
-      state.prefetchTask = null;
-      updateCacheControls();
-      updatePrefetchTaskUI();
+    await refreshCurrentBookCache(payload.book.book_key);
+    const latestTask = await refreshLatestPrefetchTask(payload.book.book_key);
+    if (latestTask && ["pending", "running"].includes(latestTask.status)) {
+      startPrefetchPolling(latestTask.task_id);
     }
     updateReaderNav();
     setStatus(`已打开《${payload.book.title}》`, "success");
@@ -3154,7 +3176,7 @@ async function continueShelfBook(shelfBook) {
 
 async function saveProgress(chapter, chapterIndex) {
   const book = currentReaderBook();
-  if (!book || !book.book_key || !userIsAdmin()) return;
+  if (!book || !book.book_key) return;
 
   try {
     await apiFetch(`/api/library/books/${book.book_key}/progress`, {
@@ -3205,9 +3227,7 @@ async function readChapter(index) {
     elements.readerContent.textContent = payload.content;
     setReaderToolbarHidden(false);
     setStatus(payload.cached ? "正文已从缓存加载" : "正文加载完成并已缓存", "success");
-    if (userIsAdmin()) {
-      await refreshCurrentBookCache(state.reader.book.book_key);
-    }
+    await refreshCurrentBookCache(state.reader.book.book_key);
     await saveProgress(payload.chapter, index);
   } catch (error) {
     elements.readerStatus.textContent = error.message;
@@ -3607,6 +3627,18 @@ elements.keywordChips.forEach((button) => {
   button.addEventListener("click", () => {
     runQuickSearch(button.dataset.keyword || "");
   });
+});
+elements.profileGoSearchBtn?.addEventListener("click", () => {
+  setActivePage("search");
+  elements.keywordInput.focus();
+});
+elements.profileGoShelfBtn?.addEventListener("click", () => {
+  setActivePage("shelf");
+});
+elements.profileGoReaderBtn?.addEventListener("click", () => {
+  if (state.reader.book) {
+    setActivePage("reader");
+  }
 });
 getScrollContainer().addEventListener(
   "scroll",
