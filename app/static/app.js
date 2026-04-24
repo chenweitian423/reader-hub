@@ -212,6 +212,8 @@ const elements = {
   sourceFile: document.querySelector("#source-file"),
   importBtn: document.querySelector("#import-btn"),
   loadSampleBtn: document.querySelector("#load-sample-btn"),
+  privateSiteAutodetectUrl: document.querySelector("#private-site-autodetect-url"),
+  privateSiteAutodetectBtn: document.querySelector("#private-site-autodetect-btn"),
   privateSiteName: document.querySelector("#private-site-name"),
   privateSiteDescription: document.querySelector("#private-site-description"),
   privateSiteBaseUrl: document.querySelector("#private-site-base-url"),
@@ -2054,34 +2056,62 @@ function loadPrivateSiteSample() {
   applyPrivateSitePreset("html_pc");
 }
 
+function fillPrivateSiteForm(site) {
+  elements.privateSiteName.value = site.name || "";
+  elements.privateSiteDescription.value = site.description || "";
+  elements.privateSiteBaseUrl.value = site.base_url || "";
+  elements.privateSiteHeaders.value = JSON.stringify(site.headers || {}, null, 2);
+  elements.privateSiteSearchUrl.value = site.search_url || "";
+  elements.privateSiteSearchList.value = site.search_list || "";
+  elements.privateSiteSearchTitle.value = site.search_title || "";
+  elements.privateSiteSearchAuthor.value = site.search_author || "";
+  elements.privateSiteSearchCover.value = site.search_cover || "";
+  elements.privateSiteSearchIntro.value = site.search_intro || "";
+  elements.privateSiteSearchDetailUrl.value = site.search_detail_url || "";
+  elements.privateSiteSearchLatest.value = site.search_latest_chapter || "";
+  elements.privateSiteDetailTitle.value = site.detail_title || "";
+  elements.privateSiteDetailAuthor.value = site.detail_author || "";
+  elements.privateSiteDetailCover.value = site.detail_cover || "";
+  elements.privateSiteDetailIntro.value = site.detail_intro || "";
+  elements.privateSiteDetailStatus.value = site.detail_status || "";
+  elements.privateSiteTocList.value = site.toc_list || "";
+  elements.privateSiteTocTitle.value = site.toc_title || "";
+  elements.privateSiteTocUrl.value = site.toc_url || "";
+  elements.privateSiteTocNext.value = site.toc_next_url || "";
+  elements.privateSiteContentBody.value = site.content_body || "";
+  elements.privateSiteContentNext.value = site.content_next_url || "";
+}
+
 function applyPrivateSitePreset(presetKey) {
   const preset = PRIVATE_SITE_PRESETS[presetKey];
   if (!preset) return;
 
   const values = preset.values;
-  elements.privateSiteName.value = values.name || "";
-  elements.privateSiteDescription.value = values.description || "";
-  elements.privateSiteBaseUrl.value = values.base_url || "";
-  elements.privateSiteHeaders.value = JSON.stringify(values.headers || {}, null, 2);
-  elements.privateSiteSearchUrl.value = values.search_url || "";
-  elements.privateSiteSearchList.value = values.search_list || "";
-  elements.privateSiteSearchTitle.value = values.search_title || "";
-  elements.privateSiteSearchAuthor.value = values.search_author || "";
-  elements.privateSiteSearchCover.value = values.search_cover || "";
-  elements.privateSiteSearchIntro.value = values.search_intro || "";
-  elements.privateSiteSearchDetailUrl.value = values.search_detail_url || "";
-  elements.privateSiteSearchLatest.value = values.search_latest_chapter || "";
-  elements.privateSiteDetailTitle.value = values.detail_title || "";
-  elements.privateSiteDetailAuthor.value = values.detail_author || "";
-  elements.privateSiteDetailCover.value = values.detail_cover || "";
-  elements.privateSiteDetailIntro.value = values.detail_intro || "";
-  elements.privateSiteDetailStatus.value = values.detail_status || "";
-  elements.privateSiteTocList.value = values.toc_list || "";
-  elements.privateSiteTocTitle.value = values.toc_title || "";
-  elements.privateSiteTocUrl.value = values.toc_url || "";
-  elements.privateSiteTocNext.value = values.toc_next_url || "";
-  elements.privateSiteContentBody.value = values.content_body || "";
-  elements.privateSiteContentNext.value = values.content_next_url || "";
+  fillPrivateSiteForm({
+    name: values.name || "",
+    description: values.description || "",
+    base_url: values.base_url || "",
+    headers: values.headers || {},
+    search_url: values.search_url || "",
+    search_list: values.search_list || "",
+    search_title: values.search_title || "",
+    search_author: values.search_author || "",
+    search_cover: values.search_cover || "",
+    search_intro: values.search_intro || "",
+    search_detail_url: values.search_detail_url || "",
+    search_latest_chapter: values.search_latest_chapter || "",
+    detail_title: values.detail_title || "",
+    detail_author: values.detail_author || "",
+    detail_cover: values.detail_cover || "",
+    detail_intro: values.detail_intro || "",
+    detail_status: values.detail_status || "",
+    toc_list: values.toc_list || "",
+    toc_title: values.toc_title || "",
+    toc_url: values.toc_url || "",
+    toc_next_url: values.toc_next_url || "",
+    content_body: values.content_body || "",
+    content_next_url: values.content_next_url || "",
+  });
   elements.privateSiteTestKeyword.value = values.test_keyword || "";
   elements.privateSitePreview.className = "private-site-preview empty";
   elements.privateSitePreview.textContent =
@@ -2171,6 +2201,42 @@ function renderPrivateSitePreview(payload) {
     </div>
     <div class="private-site-preview-list">${itemsHtml}</div>
   `;
+}
+
+async function autodetectPrivateSite() {
+  const url = elements.privateSiteAutodetectUrl.value.trim();
+  if (!url) {
+    setStatus("请先粘贴一个小说网址", "error");
+    return;
+  }
+
+  elements.privateSiteAutodetectBtn.disabled = true;
+  setStatus("正在自动识别站点规则", "loading");
+  try {
+    const payload = await apiFetch("/api/sources/private-site/autodetect", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+    fillPrivateSiteForm(payload.site);
+    const notes = payload.notes || [];
+    elements.privateSitePreview.className = "private-site-preview";
+    elements.privateSitePreview.innerHTML = `
+      <div class="private-site-preview-head">
+        <span class="badge">已按 ${payload.detected_preset || "常见模板"} 自动回填</span>
+        <span class="badge">建议再点一次测试搜索</span>
+      </div>
+      <div class="private-site-preview-list">
+        ${notes.map((note) => `<article class="private-site-preview-item"><span>${note}</span></article>`).join("")}
+      </div>
+    `;
+    setStatus("自动识别完成，规则已回填到表单", "success");
+  } catch (error) {
+    elements.privateSitePreview.className = "private-site-preview empty";
+    elements.privateSitePreview.textContent = error.message;
+    setStatus(error.message, "error");
+  } finally {
+    elements.privateSiteAutodetectBtn.disabled = false;
+  }
 }
 
 async function testPrivateSite() {
@@ -2857,6 +2923,7 @@ async function handleDroppedUploadFiles(event) {
 loadRecentSearches();
 renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
+elements.privateSiteAutodetectBtn.addEventListener("click", autodetectPrivateSite);
 elements.privateSiteSampleBtn.addEventListener("click", loadPrivateSiteSample);
 elements.privateSitePresetButtons.forEach((button) => {
   button.addEventListener("click", () => {

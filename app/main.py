@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
@@ -36,6 +37,8 @@ from app.schemas import (
     ChapterContentResponse,
     ChapterPrefetchResponse,
     DashboardSummaryRead,
+    PrivateSiteAutodetectRequest,
+    PrivateSiteAutodetectResponse,
     PrivateSiteSourceRequest,
     PrivateSiteTestRequest,
     PrivateSiteTestResponse,
@@ -54,6 +57,7 @@ from app.schemas import (
 )
 from app.services.demo_library import demo_library_stats, get_demo_book, search_demo_books
 from app.services.source_executor import (
+    autodetect_private_site,
     build_private_site_source_import,
     build_context,
     dumps_config,
@@ -750,6 +754,20 @@ async def test_private_site_source(payload: PrivateSiteTestRequest) -> PrivateSi
         items=items,
         source_payload=source_config,
     )
+
+
+@app.post("/api/sources/private-site/autodetect", response_model=PrivateSiteAutodetectResponse)
+async def autodetect_private_site_source(
+    payload: PrivateSiteAutodetectRequest,
+) -> PrivateSiteAutodetectResponse:
+    try:
+        return await autodetect_private_site(payload.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=400, detail=f"自动识别失败: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"自动识别失败: {exc}") from exc
 
 
 @app.post("/api/sources/private-site/preview")

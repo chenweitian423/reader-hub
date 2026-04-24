@@ -130,6 +130,16 @@ class PrivateSiteTestResponse(BaseModel):
     source_payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class PrivateSiteAutodetectRequest(BaseModel):
+    url: str
+
+
+class PrivateSiteAutodetectResponse(BaseModel):
+    site: PrivateSiteSourceRequest
+    detected_preset: str = ""
+    notes: list[str] = Field(default_factory=list)
+
+
 class BookOpenRequest(BaseModel):
     source_id: int
     book: dict[str, Any]

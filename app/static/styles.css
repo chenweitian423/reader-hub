@@ -947,6 +947,14 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.private-site-autodetect-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
 .private-site-preset-bar {
   align-items: center;
   margin-bottom: 14px;
@@ -2132,8 +2140,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .private-site-autodetect-bar,
   .private-site-preset-bar,
   .private-site-rule-guide {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
   }
