@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.21.1`
+当前版本：`1.22.0`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -27,6 +27,7 @@
 - 前台书城界面与后台管理界面分离
 - 普通用户可使用书架、个人中心和阅读设置
 - 管理员可额外进入书源管理、用户管理和数据工具
+- 独立书籍详情页与章节目录预览
 - 查看书籍章节目录
 - 在线阅读章节正文
 - SQLite 本地持久化
@@ -82,7 +83,7 @@ docker compose up -d
 如果你希望固定到某个发布版本，可以先复制 [`.env.example`](/Users/sky/Documents/test/.env.example) 为 `.env`，然后把：
 
 ```text
-READER_HUB_IMAGE_TAG=1.21.1
+READER_HUB_IMAGE_TAG=1.22.0
 ```
 
 改成你要部署的镜像版本。

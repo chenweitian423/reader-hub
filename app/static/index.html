@@ -334,6 +334,67 @@
 
         </section>
 
+        <section id="page-book" class="page-panel hidden">
+          <section class="page-header-card">
+            <div>
+              <p class="eyebrow">书籍详情</p>
+              <h2 id="book-detail-page-title">先从首页挑一本书</h2>
+            </div>
+            <button id="book-detail-back-btn" class="ghost-btn" type="button">返回书城</button>
+          </section>
+
+          <section class="book-detail-page">
+            <article class="book-detail-hero">
+              <div class="book-detail-cover-wrap">
+                <img id="book-detail-cover" class="book-detail-cover" alt="书籍封面" />
+              </div>
+              <div class="book-detail-copy">
+                <p id="book-detail-source" class="spotlight-source">书籍详情</p>
+                <h2 id="book-detail-title">等待选择书籍</h2>
+                <p id="book-detail-author" class="muted">作者信息会显示在这里</p>
+                <p id="book-detail-meta" class="muted">这里会显示来源、更新和阅读能力</p>
+                <p id="book-detail-intro" class="muted">
+                  进入独立详情页后，你可以先看看这本书的简介、章节预览和相关推荐，再决定是否开始阅读。
+                </p>
+                <div id="book-detail-facts" class="result-detail-facts"></div>
+                <div id="book-detail-tags" class="result-detail-tags"></div>
+                <div class="spotlight-actions">
+                  <button id="book-detail-primary-btn" type="button">开始搜索</button>
+                  <button id="book-detail-secondary-btn" class="ghost-btn" type="button">查看书架</button>
+                </div>
+              </div>
+            </article>
+
+            <section class="discovery-grid">
+              <article class="discovery-card">
+                <div class="section-head">
+                  <div>
+                    <p class="eyebrow">目录预览</p>
+                    <h3>先看前几章</h3>
+                  </div>
+                  <span id="book-detail-chapter-count" class="badge">0</span>
+                </div>
+                <div id="book-detail-chapters" class="discovery-list empty">
+                  如果当前书源支持阅读，这里会显示前几章目录预览。
+                </div>
+              </article>
+
+              <article class="discovery-card">
+                <div class="section-head">
+                  <div>
+                    <p class="eyebrow">相关推荐</p>
+                    <h3>同作者或同来源</h3>
+                  </div>
+                  <span class="badge">推荐</span>
+                </div>
+                <div id="book-detail-related" class="discovery-list empty">
+                  选中一本书后，这里会补充同作者或同来源推荐。
+                </div>
+              </article>
+            </section>
+          </section>
+        </section>
+
         <section id="page-reader" class="page-panel hidden">
           <section class="reader-page-header">
             <button id="reader-back-btn" class="ghost-btn" type="button">返回</button>

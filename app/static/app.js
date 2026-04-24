@@ -10,6 +10,7 @@ const state = {
     activePage: "search",
     lastBrowsePage: "search",
     selectedResultKey: null,
+    detailBookKey: null,
     recentSearches: [],
     readingHistory: [],
     pendingUploadFiles: [],
@@ -530,6 +531,21 @@ const elements = {
   resultDetailRelated: document.querySelector("#result-detail-related"),
   resultDetailPrimary: document.querySelector("#result-detail-primary"),
   resultDetailSecondary: document.querySelector("#result-detail-secondary"),
+  bookDetailPageTitle: document.querySelector("#book-detail-page-title"),
+  bookDetailBackBtn: document.querySelector("#book-detail-back-btn"),
+  bookDetailSource: document.querySelector("#book-detail-source"),
+  bookDetailTitle: document.querySelector("#book-detail-title"),
+  bookDetailAuthor: document.querySelector("#book-detail-author"),
+  bookDetailMeta: document.querySelector("#book-detail-meta"),
+  bookDetailIntro: document.querySelector("#book-detail-intro"),
+  bookDetailCover: document.querySelector("#book-detail-cover"),
+  bookDetailFacts: document.querySelector("#book-detail-facts"),
+  bookDetailTags: document.querySelector("#book-detail-tags"),
+  bookDetailPrimaryBtn: document.querySelector("#book-detail-primary-btn"),
+  bookDetailSecondaryBtn: document.querySelector("#book-detail-secondary-btn"),
+  bookDetailChapters: document.querySelector("#book-detail-chapters"),
+  bookDetailChapterCount: document.querySelector("#book-detail-chapter-count"),
+  bookDetailRelated: document.querySelector("#book-detail-related"),
   readerSessionLabel: document.querySelector("#reader-session-label"),
   readerProgressText: document.querySelector("#reader-progress-text"),
   readerProgressBadge: document.querySelector("#reader-progress-badge"),
@@ -960,16 +976,17 @@ function rememberRecentSearch(keyword) {
 }
 
 function rememberReadingBook(book, chapterTitle = "") {
-  if (!book?.book_key) return;
+  const normalizedBook = withBookSourceContext(book);
+  if (!normalizedBook?.book_key) return;
   const item = {
-    book_key: book.book_key,
-    title: book.title || "未命名书籍",
-    author: book.author || "",
-    source_id: book.source_id || state.reader.sourceId || 0,
-    source_name: book.source_name || state.reader.sourceName || "",
+    book_key: normalizedBook.book_key,
+    title: normalizedBook.title || "未命名书籍",
+    author: normalizedBook.author || "",
+    source_id: normalizedBook.source_id || state.reader.sourceId || 0,
+    source_name: normalizedBook.source_name || state.reader.sourceName || "",
     latest_chapter: chapterTitle || "",
     at: new Date().toISOString(),
-    book,
+    book: normalizedBook,
   };
   state.ui.readingHistory = [
     item,
@@ -1011,6 +1028,19 @@ function setReaderPreferenceVars() {
 
 function currentReaderBook() {
   return state.reader.book;
+}
+
+function withBookSourceContext(book) {
+  if (!book) return null;
+  if (book.source_id) return book;
+  if (state.reader.book?.book_key && state.reader.book.book_key === book.book_key) {
+    return {
+      ...book,
+      source_id: state.reader.sourceId,
+      source_name: book.source_name || state.reader.sourceName,
+    };
+  }
+  return book;
 }
 
 function updateReaderShelfButton() {
@@ -1226,6 +1256,14 @@ function getSelectedResult(visibleResults = getFilteredResults()) {
   );
 }
 
+function getCurrentDetailBook() {
+  return (
+    state.results.find((item) => item.book_key === state.ui.detailBookKey) ||
+    state.shelfBooks.find((item) => item.book_key === state.ui.detailBookKey)?.book ||
+    null
+  );
+}
+
 function getHomeSpotlightBook() {
   if (state.reader.book) {
     return {
@@ -1274,35 +1312,35 @@ function bindHomeSpotlightButtons(payload) {
 
   if (!payload) {
     elements.homeSpotlightPrimary.textContent = "开始搜索";
-    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightSecondary.textContent = "个人中心";
     elements.homeSpotlightPrimary.addEventListener("click", () => setActivePage("search"));
     elements.homeSpotlightSecondary.addEventListener("click", () => {
-      setActivePage("shelf");
+      setActivePage("profile");
     });
     return;
   }
 
   if (payload.kind === "reading") {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
-    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightSecondary.textContent = "书籍详情";
     elements.homeSpotlightPrimary.addEventListener("click", () => {
       setActivePage("reader");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => showBookDetail(payload.book));
     return;
   }
 
   if (payload.kind === "shelf" && payload.shelfBook) {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
-    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightSecondary.textContent = "书籍详情";
     elements.homeSpotlightPrimary.addEventListener("click", () => continueShelfBook(payload.shelfBook));
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => showBookDetail(payload.shelfBook.book));
     return;
   }
 
   elements.homeSpotlightPrimary.textContent = isReadableSource(payload.book.source_id) ? "打开阅读" : "加入书架";
-  elements.homeSpotlightSecondary.textContent = "查看书架";
+  elements.homeSpotlightSecondary.textContent = "书籍详情";
   elements.homeSpotlightPrimary.addEventListener("click", () => {
     if (isReadableSource(payload.book.source_id)) {
       openBook(payload.book);
@@ -1310,7 +1348,7 @@ function bindHomeSpotlightButtons(payload) {
       toggleShelfBook(payload.book);
     }
   });
-  elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+  elements.homeSpotlightSecondary.addEventListener("click", () => showBookDetail(payload.book));
 }
 
 function renderHomeSpotlight() {
@@ -1573,18 +1611,18 @@ function bindResultDetailButtons(book) {
 
   if (!book) {
     elements.resultDetailPrimary.textContent = "开始搜索";
-    elements.resultDetailSecondary.textContent = "查看书架";
+    elements.resultDetailSecondary.textContent = "个人中心";
     elements.resultDetailPrimary.addEventListener("click", () => {
       elements.keywordInput.focus();
       setActivePage("search");
     });
-    elements.resultDetailSecondary.addEventListener("click", () => setActivePage("shelf"));
+    elements.resultDetailSecondary.addEventListener("click", () => setActivePage("profile"));
     return;
   }
 
   const readable = isReadableSource(book.source_id);
   elements.resultDetailPrimary.textContent = readable ? "立即阅读" : "加入书架";
-  elements.resultDetailSecondary.textContent = isBookInShelf(book) ? "前往书架" : "收藏到书架";
+  elements.resultDetailSecondary.textContent = "书籍详情";
   elements.resultDetailPrimary.addEventListener("click", () => {
     if (readable) {
       openBook(book);
@@ -1593,11 +1631,7 @@ function bindResultDetailButtons(book) {
     }
   });
   elements.resultDetailSecondary.addEventListener("click", () => {
-    if (isBookInShelf(book)) {
-      setActivePage("shelf");
-    } else {
-      toggleShelfBook(book);
-    }
+    showBookDetail(book);
   });
 }
 
@@ -1690,6 +1724,163 @@ function renderResultDetail(book) {
   bindResultDetailButtons(book);
 }
 
+function bindBookDetailActions(book, readable) {
+  elements.bookDetailPrimaryBtn.replaceWith(elements.bookDetailPrimaryBtn.cloneNode(true));
+  elements.bookDetailSecondaryBtn.replaceWith(elements.bookDetailSecondaryBtn.cloneNode(true));
+  elements.bookDetailPrimaryBtn = document.querySelector("#book-detail-primary-btn");
+  elements.bookDetailSecondaryBtn = document.querySelector("#book-detail-secondary-btn");
+
+  if (!book) {
+    elements.bookDetailPrimaryBtn.textContent = "返回书城";
+    elements.bookDetailSecondaryBtn.textContent = "个人中心";
+    elements.bookDetailPrimaryBtn.addEventListener("click", () => setActivePage("search"));
+    elements.bookDetailSecondaryBtn.addEventListener("click", () => setActivePage("profile"));
+    return;
+  }
+
+  elements.bookDetailPrimaryBtn.textContent = readable ? "开始阅读" : "加入书架";
+  elements.bookDetailSecondaryBtn.textContent = isBookInShelf(book) ? "前往书架" : "收藏到书架";
+  elements.bookDetailPrimaryBtn.addEventListener("click", () => {
+    if (readable) {
+      openBook(book);
+    } else {
+      toggleShelfBook(book);
+    }
+  });
+  elements.bookDetailSecondaryBtn.addEventListener("click", () => {
+    if (isBookInShelf(book)) {
+      setActivePage("shelf");
+    } else {
+      toggleShelfBook(book);
+    }
+  });
+}
+
+async function showBookDetail(book) {
+  book = withBookSourceContext(book);
+  state.ui.detailBookKey = book?.book_key || null;
+  setActivePage("book");
+
+  if (!book) {
+    elements.bookDetailPageTitle.textContent = "先从首页挑一本书";
+    elements.bookDetailSource.textContent = "书籍详情";
+    elements.bookDetailTitle.textContent = "等待选择书籍";
+    elements.bookDetailAuthor.textContent = "作者信息会显示在这里";
+    elements.bookDetailMeta.textContent = "这里会显示来源、更新和阅读能力";
+    elements.bookDetailIntro.textContent =
+      "进入独立详情页后，你可以先看看这本书的简介、章节预览和相关推荐，再决定是否开始阅读。";
+    elements.bookDetailFacts.innerHTML = "";
+    elements.bookDetailTags.innerHTML = "";
+    elements.bookDetailChapters.className = "discovery-list empty";
+    elements.bookDetailChapters.textContent = "如果当前书源支持阅读，这里会显示前几章目录预览。";
+    elements.bookDetailChapterCount.textContent = "0";
+    elements.bookDetailRelated.className = "discovery-list empty";
+    elements.bookDetailRelated.textContent = "选中一本书后，这里会补充同作者或同来源推荐。";
+    elements.bookDetailCover.style.display = "none";
+    elements.bookDetailCover.removeAttribute("src");
+    bindBookDetailActions(null, false);
+    return;
+  }
+
+  const readable = isReadableSource(book.source_id);
+  elements.bookDetailPageTitle.textContent = book.title || "书籍详情";
+  elements.bookDetailSource.textContent = book.source_name || "搜索结果";
+  elements.bookDetailTitle.textContent = book.title || "未命名书籍";
+  elements.bookDetailAuthor.textContent = book.author ? `作者：${book.author}` : "作者信息待补充";
+  elements.bookDetailMeta.textContent = book.latest_chapter
+    ? `最新章节：${book.latest_chapter}`
+    : readable
+      ? "支持直接阅读"
+      : "当前书源仅支持搜索";
+  elements.bookDetailIntro.textContent = book.intro || "这本书暂时没有简介，可以先看目录预览或直接开始阅读。";
+  elements.bookDetailFacts.innerHTML = "";
+  elements.bookDetailTags.innerHTML = "";
+
+  [
+    { label: "来源", value: book.source_name || "未知来源" },
+    { label: "阅读能力", value: readable ? "支持直接阅读" : "当前仅支持搜索" },
+    { label: "书架状态", value: isBookInShelf(book) ? "已收藏到书架" : "尚未加入书架" },
+    { label: "最新章节", value: book.latest_chapter || "暂无最新章节" },
+  ].forEach((item) => {
+    const fact = document.createElement("div");
+    fact.className = "detail-fact";
+    fact.innerHTML = `<span>${item.label}</span><strong>${item.value}</strong>`;
+    elements.bookDetailFacts.appendChild(fact);
+  });
+
+  [
+    readable ? "可阅读" : "仅搜索",
+    isBookInShelf(book) ? "已在书架" : "未收藏",
+  ].forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.className = "tag-chip";
+    chip.textContent = tag;
+    elements.bookDetailTags.appendChild(chip);
+  });
+
+  if (book.cover) {
+    elements.bookDetailCover.src = book.cover;
+    elements.bookDetailCover.style.display = "block";
+  } else {
+    elements.bookDetailCover.removeAttribute("src");
+    elements.bookDetailCover.style.display = "none";
+  }
+
+  const relatedBooks = getRelatedBooks(book, 6).map((item) => ({
+    title: item.title || "未命名书籍",
+    subtitle: item.author ? `作者：${item.author}` : item.source_name,
+    meta: item.latest_chapter || item.source_name || "点击查看详情",
+    onClick: () => showBookDetail(item),
+  }));
+  renderInteractiveBookList(
+    elements.bookDetailRelated,
+    relatedBooks,
+    "暂时还没有更多同作者或同来源推荐。",
+  );
+
+  bindBookDetailActions(book, readable);
+
+  if (!readable) {
+    elements.bookDetailChapterCount.textContent = "0";
+    elements.bookDetailChapters.className = "discovery-list empty";
+    elements.bookDetailChapters.textContent = "当前书源暂时不支持目录预览。";
+    return;
+  }
+
+  elements.bookDetailChapterCount.textContent = "...";
+  elements.bookDetailChapters.className = "discovery-list empty";
+  elements.bookDetailChapters.textContent = "正在加载目录预览...";
+  try {
+    const payload = await apiFetch("/api/books/open", {
+      method: "POST",
+      body: JSON.stringify({
+        source_id: book.source_id,
+        book,
+      }),
+    });
+    const chapters = payload.chapters || [];
+    elements.bookDetailChapterCount.textContent = String(chapters.length);
+    const previewItems = chapters.slice(0, 10).map((chapter, index) => ({
+      title: chapter.title || `第 ${index + 1} 章`,
+      subtitle: `第 ${index + 1} 章`,
+      meta: "点击进入阅读",
+      onClick: async () => {
+        await openBook(book, { autoRead: false });
+        await readChapter(index);
+      },
+    }));
+    renderInteractiveBookList(
+      elements.bookDetailChapters,
+      previewItems,
+      "目录已加载，但当前没有可展示章节。",
+    );
+  } catch (error) {
+    elements.bookDetailChapterCount.textContent = "0";
+    elements.bookDetailChapters.className = "discovery-list empty";
+    elements.bookDetailChapters.textContent = `目录预览失败：${error.message}`;
+  }
+}
+
 function renderHomeSurface() {
   renderHomeSpotlight();
   renderHomeContinue();
@@ -1718,14 +1909,16 @@ function renderAppMeta() {
 
 function setActivePage(pageId) {
   state.ui.activePage = pageId;
-  if (pageId !== "reader") {
+  if (!["reader", "book"].includes(pageId)) {
     state.ui.lastBrowsePage = pageId;
     setReaderToolbarHidden(false);
     setReaderMenuOpen(false);
     setReaderDrawerOpen(false);
   }
   elements.menuButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.page === pageId);
+    const buttonPage = button.dataset.page;
+    const isActive = buttonPage === pageId || (pageId === "book" && buttonPage === "search");
+    button.classList.toggle("active", isActive);
   });
   elements.pagePanels.forEach((panel) => {
     panel.classList.toggle("hidden", panel.id !== `page-${pageId}`);
@@ -3783,6 +3976,9 @@ elements.profileGoReaderBtn?.addEventListener("click", () => {
   if (state.ui.readingHistory.length) {
     openBook(state.ui.readingHistory[0].book, { autoRead: true });
   }
+});
+elements.bookDetailBackBtn?.addEventListener("click", () => {
+  setActivePage("search");
 });
 getScrollContainer().addEventListener(
   "scroll",
