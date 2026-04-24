@@ -379,6 +379,7 @@ const elements = {
   sourceSelectionInfo: document.querySelector("#source-selection-info"),
   searchForm: document.querySelector("#search-form"),
   pageShell: document.querySelector("#page-shell"),
+  workspace: document.querySelector(".workspace"),
   keywordInput: document.querySelector("#keyword-input"),
   results: document.querySelector("#results"),
   resultCount: document.querySelector("#result-count"),
@@ -433,6 +434,7 @@ const elements = {
   readerBottomNextBtn: document.querySelector("#reader-bottom-next-btn"),
   readerBottomTitle: document.querySelector("#reader-bottom-title"),
   readerBottomProgress: document.querySelector("#reader-bottom-progress"),
+  readerScrollTopBtn: document.querySelector("#reader-scroll-top-btn"),
   toggleShelfBtn: document.querySelector("#toggle-shelf-btn"),
   cacheBookBtn: document.querySelector("#cache-book-btn"),
   clearCacheBtn: document.querySelector("#clear-cache-btn"),
@@ -970,6 +972,27 @@ function setReaderToolbarHidden(enabled) {
   elements.pageShell.classList.toggle("reader-toolbar-hidden", state.ui.readerToolbarHidden);
 }
 
+function getScrollContainer() {
+  return elements.workspace || window;
+}
+
+function scrollReaderToTop() {
+  const target = getScrollContainer();
+  if (target === window) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  target.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateReaderScrollTopButton() {
+  if (!elements.readerScrollTopBtn) return;
+  const target = getScrollContainer();
+  const currentTop = target === window ? window.scrollY : target.scrollTop;
+  const shouldShow = state.ui.activePage === "reader" && currentTop > 280;
+  elements.readerScrollTopBtn.classList.toggle("hidden", !shouldShow);
+}
+
 function updatePrefetchTaskUI() {
   const task = state.prefetchTask;
   if (!task) {
@@ -1434,6 +1457,7 @@ function setActivePage(pageId) {
     panel.classList.toggle("hidden", panel.id !== `page-${pageId}`);
   });
   elements.pageShell.classList.toggle("reader-page-active", pageId === "reader");
+  updateReaderScrollTopButton();
 }
 
 async function apiFetch(url, options = {}) {
@@ -3223,19 +3247,24 @@ elements.menuButtons.forEach((button) => {
     setActivePage(button.dataset.page);
   });
 });
+elements.readerScrollTopBtn?.addEventListener("click", () => {
+  scrollReaderToTop();
+});
 elements.keywordChips.forEach((button) => {
   button.addEventListener("click", () => {
     runQuickSearch(button.dataset.keyword || "");
   });
 });
-window.addEventListener(
+getScrollContainer().addEventListener(
   "scroll",
   () => {
+    const target = getScrollContainer();
+    const currentY = target === window ? window.scrollY : target.scrollTop;
+    updateReaderScrollTopButton();
     if (state.ui.activePage !== "reader" || !state.reader.book || state.ui.readerDrawerOpen) {
-      previousWindowScrollY = window.scrollY;
+      previousWindowScrollY = currentY;
       return;
     }
-    const currentY = window.scrollY;
     const delta = currentY - previousWindowScrollY;
     if (currentY < 120 || delta < -10) {
       setReaderToolbarHidden(false);
