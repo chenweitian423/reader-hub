@@ -46,6 +46,11 @@ class BookSourceUpdate(BaseModel):
     enabled: bool
 
 
+class SourceBulkDeleteRequest(BaseModel):
+    source_ids: list[int] = Field(default_factory=list)
+    delete_all: bool = False
+
+
 class SearchRequest(BaseModel):
     keyword: str
     source_ids: Optional[list[int]] = None

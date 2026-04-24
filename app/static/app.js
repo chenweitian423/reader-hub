@@ -11,6 +11,7 @@ const state = {
     pendingUploadFiles: [],
     sourcePage: 1,
     sourcePageSize: 12,
+    selectedSourceIds: [],
     readerFocusMode: false,
     readerSidebarCollapsed: false,
     readerDrawerOpen: false,
@@ -89,6 +90,11 @@ const elements = {
   sourcePrevPage: document.querySelector("#source-prev-page"),
   sourceNextPage: document.querySelector("#source-next-page"),
   sourcePaginationInfo: document.querySelector("#source-pagination-info"),
+  sourceSelectPageBtn: document.querySelector("#source-select-page-btn"),
+  sourceClearSelectionBtn: document.querySelector("#source-clear-selection-btn"),
+  sourceDeleteSelectedBtn: document.querySelector("#source-delete-selected-btn"),
+  sourceDeleteAllBtn: document.querySelector("#source-delete-all-btn"),
+  sourceSelectionInfo: document.querySelector("#source-selection-info"),
   searchForm: document.querySelector("#search-form"),
   pageShell: document.querySelector("#page-shell"),
   keywordInput: document.querySelector("#keyword-input"),
@@ -211,6 +217,43 @@ function getSourceById(sourceId) {
 
 function getShelfBookByKey(bookKey) {
   return state.shelfBooks.find((book) => book.book_key === bookKey) || null;
+}
+
+function isProtectedSource(source) {
+  return Boolean(source && source.name === "本地导入书库");
+}
+
+function syncSelectedSources() {
+  const validIds = new Set(state.sources.map((source) => source.id));
+  state.ui.selectedSourceIds = state.ui.selectedSourceIds.filter((id) => validIds.has(id));
+}
+
+function getSelectedSourceIds() {
+  syncSelectedSources();
+  return state.ui.selectedSourceIds;
+}
+
+function toggleSelectedSource(sourceId, enabled) {
+  const selected = new Set(getSelectedSourceIds());
+  if (enabled) {
+    selected.add(sourceId);
+  } else {
+    selected.delete(sourceId);
+  }
+  state.ui.selectedSourceIds = Array.from(selected);
+}
+
+function getSourcePaginationMeta() {
+  const totalPages = Math.max(1, Math.ceil(state.sources.length / state.ui.sourcePageSize));
+  const normalizedPage = Math.min(Math.max(state.ui.sourcePage, 1), totalPages);
+  const startIndex = (normalizedPage - 1) * state.ui.sourcePageSize;
+  const pageItems = state.sources.slice(startIndex, startIndex + state.ui.sourcePageSize);
+  return {
+    totalPages,
+    normalizedPage,
+    startIndex,
+    pageItems,
+  };
 }
 
 function sourceSupportsReadingConfig(config) {
@@ -1193,29 +1236,45 @@ function renderSources() {
   elements.sourceCount.textContent = String(state.sources.length);
   elements.sourcePageSize.value = String(state.ui.sourcePageSize);
   renderSourceFilterOptions();
+  syncSelectedSources();
 
   if (!state.sources.length) {
     elements.sourcePaginationInfo.textContent = "0 / 0";
     elements.sourcePrevPage.disabled = true;
     elements.sourceNextPage.disabled = true;
+    elements.sourceSelectionInfo.textContent = "已选 0 个";
+    elements.sourceSelectPageBtn.disabled = true;
+    elements.sourceClearSelectionBtn.disabled = true;
+    elements.sourceDeleteSelectedBtn.disabled = true;
+    elements.sourceDeleteAllBtn.disabled = true;
     elements.sourceList.className = "source-list empty";
     elements.sourceList.textContent = "暂无书源，请先导入。";
     return;
   }
 
-  const totalPages = Math.max(1, Math.ceil(state.sources.length / state.ui.sourcePageSize));
-  state.ui.sourcePage = Math.min(state.ui.sourcePage, totalPages);
-  const startIndex = (state.ui.sourcePage - 1) * state.ui.sourcePageSize;
-  const pageItems = state.sources.slice(startIndex, startIndex + state.ui.sourcePageSize);
+  const { totalPages, normalizedPage, startIndex, pageItems } = getSourcePaginationMeta();
+  state.ui.sourcePage = normalizedPage;
+  const selectedIds = new Set(getSelectedSourceIds());
+  const deletableAllCount = state.sources.filter((source) => !isProtectedSource(source)).length;
+  const selectedDeletableCount = state.sources.filter(
+    (source) => selectedIds.has(source.id) && !isProtectedSource(source),
+  ).length;
   elements.sourcePaginationInfo.textContent = `${state.ui.sourcePage} / ${totalPages}`;
   elements.sourcePrevPage.disabled = state.ui.sourcePage <= 1;
   elements.sourceNextPage.disabled = state.ui.sourcePage >= totalPages;
+  elements.sourceSelectionInfo.textContent = `已选 ${selectedIds.size} 个`;
+  elements.sourceSelectPageBtn.disabled = !pageItems.some((source) => !isProtectedSource(source));
+  elements.sourceClearSelectionBtn.disabled = !selectedIds.size;
+  elements.sourceDeleteSelectedBtn.disabled = !selectedDeletableCount;
+  elements.sourceDeleteAllBtn.disabled = !deletableAllCount;
 
   elements.sourceList.className = "source-list";
   elements.sourceList.innerHTML = "";
 
   pageItems.forEach((source, index) => {
     const fragment = elements.sourceItemTemplate.content.cloneNode(true);
+    const checkbox = fragment.querySelector(".source-checkbox");
+    const checkWrap = fragment.querySelector(".source-check");
     const name = fragment.querySelector(".source-name");
     const description = fragment.querySelector(".source-description");
     const enabledTag = fragment.querySelector(".source-enabled");
@@ -1236,9 +1295,20 @@ function renderSources() {
     enabledTag.textContent = source.enabled ? "已启用" : "已停用";
     enabledTag.className = `source-enabled ${source.enabled ? "enabled" : "disabled"}`;
     toggleBtn.textContent = source.enabled ? "停用" : "启用";
+    checkbox.checked = selectedIds.has(source.id);
+    checkbox.disabled = isProtectedSource(source);
+    checkWrap.classList.toggle("disabled", checkbox.disabled);
+    if (checkbox.disabled) {
+      checkWrap.title = "系统内置书源不支持删除";
+    }
 
+    checkbox.addEventListener("change", () => {
+      toggleSelectedSource(source.id, checkbox.checked);
+      renderSources();
+    });
     toggleBtn.addEventListener("click", () => toggleSource(source));
     deleteBtn.addEventListener("click", () => deleteSource(source));
+    deleteBtn.disabled = isProtectedSource(source);
     elements.sourceList.appendChild(fragment);
   });
   renderHomeSurface();
@@ -1976,6 +2046,102 @@ async function deleteSource(source) {
   }
 }
 
+async function refreshResultsForActiveView() {
+  const keyword = elements.keywordInput.value.trim();
+  if (!keyword || !state.results.length) {
+    renderResults();
+    renderSourceStatus([]);
+    return;
+  }
+
+  const payload = await apiFetch("/api/search", {
+    method: "POST",
+    body: JSON.stringify({
+      keyword,
+      limit_per_source: 10,
+    }),
+  });
+  renderResults(payload.items);
+  renderSourceStatus(payload.sources);
+}
+
+function selectCurrentSourcePage() {
+  if (!state.sources.length) return;
+  const { pageItems } = getSourcePaginationMeta();
+  const selected = new Set(getSelectedSourceIds());
+  pageItems.forEach((source) => {
+    if (!isProtectedSource(source)) {
+      selected.add(source.id);
+    }
+  });
+  state.ui.selectedSourceIds = Array.from(selected);
+  renderSources();
+}
+
+function clearSelectedSources() {
+  state.ui.selectedSourceIds = [];
+  renderSources();
+}
+
+async function bulkDeleteSources(payload, statusText) {
+  await apiFetch("/api/sources/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  await refreshSources();
+  await refreshResultsForActiveView();
+  clearSelectedSources();
+  setStatus(statusText, "success");
+}
+
+async function deleteSelectedSources() {
+  const selectedIds = getSelectedSourceIds();
+  const selectedSources = state.sources.filter((source) => selectedIds.includes(source.id));
+  const deletableSources = selectedSources.filter((source) => !isProtectedSource(source));
+
+  if (!deletableSources.length) {
+    setStatus("请先选择至少一个可删除的书源", "error");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `确认删除所选 ${deletableSources.length} 个书源吗？此操作不可恢复。`,
+  );
+  if (!confirmed) return;
+
+  setStatus("正在删除所选书源", "loading");
+  try {
+    await bulkDeleteSources(
+      { source_ids: deletableSources.map((source) => source.id), delete_all: false },
+      `已删除 ${deletableSources.length} 个书源`,
+    );
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function deleteAllSources() {
+  const deletableCount = state.sources.filter((source) => !isProtectedSource(source)).length;
+  if (!deletableCount) {
+    setStatus("当前没有可删除的书源", "error");
+    return;
+  }
+
+  const confirmText =
+    deletableCount === state.sources.length
+      ? `确认删除全部 ${deletableCount} 个书源吗？此操作不可恢复。`
+      : `确认删除全部 ${deletableCount} 个可删除书源吗？系统内置书源会自动保留。`;
+  const confirmed = window.confirm(confirmText);
+  if (!confirmed) return;
+
+  setStatus("正在删除全部书源", "loading");
+  try {
+    await bulkDeleteSources({ source_ids: [], delete_all: true }, `已删除 ${deletableCount} 个书源`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
 async function searchBooks(event) {
   event.preventDefault();
   const keyword = elements.keywordInput.value.trim();
@@ -2457,6 +2623,18 @@ elements.sourcePageSize.addEventListener("change", () => {
   state.ui.sourcePageSize = Number(elements.sourcePageSize.value) || 12;
   state.ui.sourcePage = 1;
   renderSources();
+});
+elements.sourceSelectPageBtn.addEventListener("click", () => {
+  selectCurrentSourcePage();
+});
+elements.sourceClearSelectionBtn.addEventListener("click", () => {
+  clearSelectedSources();
+});
+elements.sourceDeleteSelectedBtn.addEventListener("click", () => {
+  deleteSelectedSources();
+});
+elements.sourceDeleteAllBtn.addEventListener("click", () => {
+  deleteAllSources();
 });
 elements.sourcePrevPage.addEventListener("click", () => {
   if (state.ui.sourcePage <= 1) return;

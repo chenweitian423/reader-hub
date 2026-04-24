@@ -45,6 +45,7 @@ from app.schemas import (
     ShelfBookCreate,
     ShelfBookRead,
     ShelfBookUpdate,
+    SourceBulkDeleteRequest,
     UploadedBookImportItem,
     UploadedBookImportResponse,
 )
@@ -81,6 +82,7 @@ AUTO_SEED_DEMO_SOURCE = os.getenv("READER_HUB_AUTO_SEED_DEMO_SOURCE", "true").st
     "off",
 }
 UPLOADED_SOURCE_NAME = "本地导入书库"
+PROTECTED_SOURCE_NAMES = {UPLOADED_SOURCE_NAME}
 ALLOWED_CORS_ORIGINS = [
     item.strip()
     for item in os.getenv("READER_HUB_CORS_ORIGINS", "*").split(",")
@@ -731,9 +733,47 @@ async def update_source(
 @app.delete("/api/sources/{source_id}")
 async def delete_source(source_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
     source = get_source_or_404(source_id, db)
+    if source.name in PROTECTED_SOURCE_NAMES:
+        raise HTTPException(status_code=400, detail="系统内置书源不支持删除")
     db.delete(source)
     db.commit()
     return {"message": "书源已删除"}
+
+
+@app.post("/api/sources/bulk-delete")
+async def bulk_delete_sources(
+    payload: SourceBulkDeleteRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if payload.delete_all:
+        candidates = db.query(BookSource).all()
+    else:
+        if not payload.source_ids:
+            raise HTTPException(status_code=400, detail="请至少选择一个书源")
+        candidates = db.query(BookSource).filter(BookSource.id.in_(payload.source_ids)).all()
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="没有找到可删除的书源")
+
+    protected = [source for source in candidates if source.name in PROTECTED_SOURCE_NAMES]
+    deletable = [source for source in candidates if source.name not in PROTECTED_SOURCE_NAMES]
+
+    if not deletable:
+        names = "、".join(source.name for source in protected) or "系统内置书源"
+        raise HTTPException(status_code=400, detail=f"{names} 不支持删除")
+
+    deleted_names = [source.name for source in deletable]
+    for source in deletable:
+        db.delete(source)
+    db.commit()
+
+    return {
+        "message": "书源已删除",
+        "deleted_count": len(deletable),
+        "deleted_names": deleted_names,
+        "protected_count": len(protected),
+        "protected_names": [source.name for source in protected],
+    }
 
 
 @app.get("/api/library/books", response_model=list[ShelfBookRead])

@@ -573,6 +573,13 @@
             <div class="section-head">
               <h2>已导入书源</h2>
               <div class="source-toolbar">
+                <div class="source-bulk-actions">
+                  <button id="source-select-page-btn" class="ghost-btn" type="button">本页全选</button>
+                  <button id="source-clear-selection-btn" class="ghost-btn" type="button">清空选择</button>
+                  <button id="source-delete-selected-btn" class="delete-btn" type="button">删除所选</button>
+                  <button id="source-delete-all-btn" class="delete-btn" type="button">删除全部</button>
+                  <span id="source-selection-info" class="badge">已选 0 个</span>
+                </div>
                 <label class="source-page-size">
                   <span>每页展示</span>
                   <select id="source-page-size">
@@ -645,6 +652,10 @@
 
     <template id="source-item-template">
       <article class="source-item">
+        <label class="source-check">
+          <input class="source-checkbox" type="checkbox" />
+          <span>选择</span>
+        </label>
         <div>
           <div class="source-title-row">
             <h3 class="source-name"></h3>
