@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy import func
@@ -741,9 +741,9 @@ async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]
 
 
 @app.get("/api/library/uploads")
-async def upload_books_api_info(request: Request) -> dict[str, Any]:
+async def upload_books_api_info(request: Request) -> Any:
     base_url = str(request.base_url).rstrip("/")
-    return {
+    payload = {
         "message": "这个地址用于局域网书籍上传。请使用 POST multipart/form-data，而不是直接在浏览器里 GET 打开。",
         "method": "POST",
         "content_type": "multipart/form-data",
@@ -762,6 +762,496 @@ async def upload_books_api_info(request: Request) -> dict[str, Any]:
         ),
         "cors_origins": ALLOWED_CORS_ORIGINS or ["*"],
     }
+
+    accepts_html = "text/html" in (request.headers.get("accept") or "")
+    if not accepts_html:
+        return payload
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reader Hub 局域网上传</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #f2e6d3;
+        --surface: rgba(255, 250, 244, 0.94);
+        --ink: #2b1b11;
+        --muted: #7e6c5b;
+        --line: rgba(89, 62, 32, 0.12);
+        --accent: #c25b2f;
+        --accent-deep: #8e3716;
+        --success: #276749;
+        --warning: #9c4221;
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top right, rgba(194, 91, 47, 0.18), transparent 24%),
+          linear-gradient(135deg, #f1e2ca 0%, #ead6b5 52%, #f7efe2 100%);
+        padding: 24px;
+      }}
+      .shell {{
+        width: min(920px, 100%);
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }}
+      .card {{
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        padding: 24px;
+        box-shadow: 0 24px 60px rgba(77, 43, 14, 0.12);
+      }}
+      .eyebrow {{
+        margin: 0 0 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        color: var(--accent);
+        font-weight: 700;
+      }}
+      h1, h2, p {{ margin: 0; }}
+      h1 {{ font-size: 34px; line-height: 1.12; margin-bottom: 12px; }}
+      .muted {{ color: var(--muted); }}
+      .dropzone {{
+        border-radius: 24px;
+        border: 1.5px dashed rgba(194, 91, 47, 0.36);
+        background:
+          radial-gradient(circle at top right, rgba(194, 91, 47, 0.12), transparent 30%),
+          linear-gradient(180deg, rgba(255, 252, 248, 0.92), rgba(255, 247, 239, 0.8));
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+        transition: border-color 160ms ease, transform 160ms ease;
+      }}
+      .dropzone.drag-active {{
+        border-color: rgba(194, 91, 47, 0.82);
+        transform: translateY(-1px);
+      }}
+      .actions, .footer {{
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }}
+      button {{
+        border: none;
+        border-radius: 999px;
+        padding: 12px 18px;
+        background: var(--accent);
+        color: #fff7f0;
+        cursor: pointer;
+        font: inherit;
+      }}
+      button.secondary {{
+        background: rgba(194, 91, 47, 0.1);
+        color: var(--accent-deep);
+        border: 1px solid rgba(194, 91, 47, 0.18);
+      }}
+      input[type="text"] {{
+        width: 100%;
+        border: 1px solid rgba(84, 59, 29, 0.18);
+        border-radius: 16px;
+        background: #fffdf9;
+        padding: 14px 16px;
+        color: var(--ink);
+        font: inherit;
+      }}
+      input[type="file"] {{ display: none; }}
+      .grid {{
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .selection, .result {{
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+        border-radius: 20px;
+        background: rgba(255, 253, 250, 0.78);
+        border: 1px solid rgba(89, 62, 32, 0.1);
+      }}
+      .selection.empty, .result.empty {{
+        min-height: 120px;
+        place-items: center;
+        color: var(--muted);
+      }}
+      .file-list {{
+        display: grid;
+        gap: 10px;
+        max-height: 280px;
+        overflow: auto;
+      }}
+      .file-item {{
+        display: grid;
+        gap: 4px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(89, 62, 32, 0.08);
+      }}
+      .file-item strong, .file-item span {{ overflow-wrap: anywhere; }}
+      .badge {{
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        background: rgba(181, 82, 51, 0.1);
+        color: var(--accent-deep);
+      }}
+      code {{
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(36, 22, 13, 0.06);
+        color: var(--ink);
+        word-break: break-all;
+      }}
+      .status.success {{ color: var(--success); }}
+      .status.error {{ color: var(--warning); }}
+      @media (max-width: 720px) {{
+        body {{ padding: 14px; }}
+        .grid {{ grid-template-columns: 1fr; }}
+        .actions, .footer {{ align-items: stretch; }}
+        button {{ width: 100%; justify-content: center; }}
+      }}
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="card">
+        <p class="eyebrow">Reader Hub</p>
+        <h1>局域网上传书籍</h1>
+        <p class="muted">现在直接在浏览器打开这个地址，也可以选择文件、选择目录，或者拖动文件到页面里上传到书架。</p>
+      </section>
+
+      <section class="card">
+        <div id="dropzone" class="dropzone" role="button" tabindex="0">
+          <div>
+            <p class="eyebrow">上传入口</p>
+            <h2>拖动文件或整个文件夹到这里</h2>
+            <p class="muted">支持 TXT、MD、EPUB。兼容浏览器会优先弹出原生文件或目录选择器。</p>
+          </div>
+          <input id="file-input" type="file" accept=".txt,.md,.epub" multiple />
+          <input id="directory-input" type="file" accept=".txt,.md,.epub" webkitdirectory directory multiple />
+          <div class="actions">
+            <button id="pick-files" type="button">选择书籍文件</button>
+            <button id="pick-directory" class="secondary" type="button">选择整个目录</button>
+            <button id="clear-files" class="secondary" type="button">清空待上传</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="grid">
+          <label>
+            <p class="eyebrow">默认分类</p>
+            <input id="category-input" type="text" placeholder="可选，例如：本地导入 / 小说 / 学习" />
+          </label>
+          <label>
+            <p class="eyebrow">默认标签</p>
+            <input id="tags-input" type="text" placeholder="可选，用逗号分隔，例如：上传, 局域网" />
+          </label>
+        </div>
+      </section>
+
+      <section id="selection" class="card selection empty">还没有选择文件。你可以点击按钮，也可以直接拖动文件到页面。</section>
+
+      <section class="card">
+        <div class="footer">
+          <span class="badge">接口地址</span>
+          <code>{payload["endpoint"]}</code>
+        </div>
+        <div class="footer" style="margin-top: 14px;">
+          <button id="upload-btn" type="button">上传到书架</button>
+          <span id="status" class="muted">等待选择文件</span>
+        </div>
+      </section>
+
+      <section id="result" class="card result empty">上传结果会显示在这里。</section>
+    </main>
+
+    <script>
+      const SUPPORTED = new Set(["txt", "md", "epub"]);
+      const state = {{ files: [] }};
+      const dropzone = document.querySelector("#dropzone");
+      const fileInput = document.querySelector("#file-input");
+      const directoryInput = document.querySelector("#directory-input");
+      const selection = document.querySelector("#selection");
+      const result = document.querySelector("#result");
+      const status = document.querySelector("#status");
+      const categoryInput = document.querySelector("#category-input");
+      const tagsInput = document.querySelector("#tags-input");
+
+      function formatFileSize(size) {{
+        if (!Number.isFinite(size) || size <= 0) return "0 B";
+        const units = ["B", "KB", "MB", "GB"];
+        let value = size;
+        let index = 0;
+        while (value >= 1024 && index < units.length - 1) {{
+          value /= 1024;
+          index += 1;
+        }}
+        const digits = value >= 100 || index === 0 ? 0 : 1;
+        return `${{value.toFixed(digits)}} ${{units[index]}}`;
+      }}
+
+      function getRelativePath(file) {{
+        return file.readerHubRelativePath || file.webkitRelativePath || file.name;
+      }}
+
+      function getKey(file) {{
+        return [getRelativePath(file), file.size, file.lastModified].join("::");
+      }}
+
+      function renderSelection() {{
+        const files = state.files;
+        if (!files.length) {{
+          selection.className = "card selection empty";
+          selection.textContent = "还没有选择文件。你可以点击按钮，也可以直接拖动文件到页面。";
+          return;
+        }}
+        const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+        selection.className = "card selection";
+        selection.innerHTML = `
+          <div class="footer">
+            <strong>已选 ${{files.length}} 个文件</strong>
+            <span class="muted">${{formatFileSize(totalSize)}}</span>
+          </div>
+        `;
+        const list = document.createElement("div");
+        list.className = "file-list";
+        files.forEach((file) => {{
+          const item = document.createElement("div");
+          item.className = "file-item";
+          item.innerHTML = `
+            <strong>${{file.name}}</strong>
+            <span class="muted">${{getRelativePath(file)}}</span>
+            <span class="badge">${{formatFileSize(file.size || 0)}}</span>
+          `;
+          list.appendChild(item);
+        }});
+        selection.appendChild(list);
+      }}
+
+      function setStatus(text, type = "") {{
+        status.textContent = text;
+        status.className = type ? `status ${{type}}` : "muted";
+      }}
+
+      function mergeFiles(files) {{
+        const map = new Map(state.files.map((file) => [getKey(file), file]));
+        let ignored = 0;
+        files.forEach((file) => {{
+          const ext = String(file.name || "").split(".").pop()?.toLowerCase();
+          if (!ext || !SUPPORTED.has(ext)) {{
+            ignored += 1;
+            return;
+          }}
+          map.set(getKey(file), file);
+        }});
+        state.files = Array.from(map.values()).sort((a, b) => getRelativePath(a).localeCompare(getRelativePath(b), "zh-CN"));
+        renderSelection();
+        if (ignored) {{
+          setStatus(`已忽略 ${{ignored}} 个不支持的文件`, "error");
+        }} else if (files.length) {{
+          setStatus(`已加入 ${{files.length}} 个待上传文件`);
+        }}
+      }}
+
+      async function readDirectoryEntry(entry, pathPrefix = "") {{
+        if (!entry) return [];
+        if (entry.isFile) {{
+          return new Promise((resolve) => {{
+            entry.file((file) => {{
+              file.readerHubRelativePath = `${{pathPrefix}}${{file.name}}`;
+              resolve([file]);
+            }});
+          }});
+        }}
+        if (!entry.isDirectory) return [];
+        const reader = entry.createReader();
+        const entries = [];
+        while (true) {{
+          const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+          if (!batch.length) break;
+          entries.push(...batch);
+        }}
+        const nested = await Promise.all(entries.map((child) => readDirectoryEntry(child, `${{pathPrefix}}${{entry.name}}/`)));
+        return nested.flat();
+      }}
+
+      async function extractDroppedFiles(dataTransfer) {{
+        const items = Array.from(dataTransfer.items || []);
+        if (items.length && items.some((item) => typeof item.webkitGetAsEntry === "function")) {{
+          const files = await Promise.all(
+            items
+              .filter((item) => item.kind === "file")
+              .map((item) => readDirectoryEntry(item.webkitGetAsEntry())),
+          );
+          return files.flat();
+        }}
+        return Array.from(dataTransfer.files || []);
+      }}
+
+      async function readDirectoryHandle(directoryHandle, pathPrefix = "") {{
+        const files = [];
+        for await (const [name, handle] of directoryHandle.entries()) {{
+          const nextPath = `${{pathPrefix}}${{name}}`;
+          if (handle.kind === "file") {{
+            const file = await handle.getFile();
+            file.readerHubRelativePath = nextPath;
+            files.push(file);
+          }} else if (handle.kind === "directory") {{
+            files.push(...await readDirectoryHandle(handle, `${{nextPath}}/`));
+          }}
+        }}
+        return files;
+      }}
+
+      async function openFilePicker() {{
+        if (typeof window.showOpenFilePicker === "function") {{
+          try {{
+            const handles = await window.showOpenFilePicker({{
+              multiple: true,
+              types: [{{ description: "书籍文件", accept: {{ "text/plain": [".txt", ".md"], "application/epub+zip": [".epub"] }} }}],
+            }});
+            const files = await Promise.all(handles.map(async (handle) => handle.getFile()));
+            mergeFiles(files);
+          }} catch (error) {{
+            if (error?.name !== "AbortError") setStatus("浏览器文件选择失败，请重试", "error");
+          }}
+          return;
+        }}
+        fileInput.click();
+      }}
+
+      async function openDirectoryPicker() {{
+        if (typeof window.showDirectoryPicker === "function") {{
+          try {{
+            const handle = await window.showDirectoryPicker();
+            const files = await readDirectoryHandle(handle);
+            mergeFiles(files);
+          }} catch (error) {{
+            if (error?.name !== "AbortError") setStatus("浏览器目录选择失败，请重试", "error");
+          }}
+          return;
+        }}
+        directoryInput.click();
+      }}
+
+      async function uploadFiles() {{
+        if (!state.files.length) {{
+          setStatus("请先选择要上传的书籍文件", "error");
+          return;
+        }}
+        const formData = new FormData();
+        state.files.forEach((file) => formData.append("files", file, getRelativePath(file)));
+        formData.append("category", categoryInput.value.trim());
+        formData.append("tags", tagsInput.value.trim());
+        setStatus("正在上传到书架...");
+        try {{
+          const response = await fetch("{payload["endpoint"]}", {{ method: "POST", body: formData }});
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.detail || "上传失败");
+          result.className = "card result";
+          result.innerHTML = `
+            <div class="footer">
+              <strong>上传完成</strong>
+              <span class="badge">共导入 ${{data.imported_count}} 本</span>
+            </div>
+          `;
+          const list = document.createElement("div");
+          list.className = "file-list";
+          (data.items || []).forEach((item) => {{
+            const row = document.createElement("div");
+            row.className = "file-item";
+            row.innerHTML = `
+              <strong>${{item.title || item.filename}}</strong>
+              <span class="muted">${{item.filename}} · ${{item.format.toUpperCase()}}</span>
+              <span class="badge">${{item.chapter_count}} 章</span>
+            `;
+            list.appendChild(row);
+          }});
+          result.appendChild(list);
+          state.files = [];
+          renderSelection();
+          setStatus("上传成功，书已进入书架", "success");
+        }} catch (error) {{
+          result.className = "card result";
+          result.textContent = error.message || "上传失败";
+          setStatus(error.message || "上传失败", "error");
+        }}
+      }}
+
+      document.querySelector("#pick-files").addEventListener("click", openFilePicker);
+      document.querySelector("#pick-directory").addEventListener("click", openDirectoryPicker);
+      document.querySelector("#clear-files").addEventListener("click", () => {{
+        state.files = [];
+        renderSelection();
+        setStatus("已清空待上传文件");
+      }});
+      document.querySelector("#upload-btn").addEventListener("click", uploadFiles);
+      fileInput.addEventListener("change", (event) => {{
+        mergeFiles(Array.from(event.target.files || []));
+        event.target.value = "";
+      }});
+      directoryInput.addEventListener("change", (event) => {{
+        mergeFiles(Array.from(event.target.files || []));
+        event.target.value = "";
+      }});
+
+      dropzone.addEventListener("click", (event) => {{
+        if (event.target.closest("button")) return;
+        openFilePicker();
+      }});
+      dropzone.addEventListener("keydown", (event) => {{
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openFilePicker();
+      }});
+      ["dragenter", "dragover"].forEach((eventName) => {{
+        dropzone.addEventListener(eventName, (event) => {{
+          event.preventDefault();
+          dropzone.classList.add("drag-active");
+        }});
+      }});
+      dropzone.addEventListener("dragleave", (event) => {{
+        if (!dropzone.contains(event.relatedTarget)) {{
+          dropzone.classList.remove("drag-active");
+        }}
+      }});
+      dropzone.addEventListener("drop", async (event) => {{
+        event.preventDefault();
+        dropzone.classList.remove("drag-active");
+        mergeFiles(await extractDroppedFiles(event.dataTransfer));
+      }});
+      window.addEventListener("dragover", (event) => {{
+        if (!event.dataTransfer?.types?.includes("Files")) return;
+        event.preventDefault();
+      }});
+      window.addEventListener("drop", (event) => {{
+        if (!event.dataTransfer?.types?.includes("Files")) return;
+        if (dropzone.contains(event.target)) return;
+        event.preventDefault();
+        setStatus("请把文件拖到上传区域里");
+      }});
+
+      renderSelection();
+    </script>
+  </body>
+</html>"""
+    return HTMLResponse(html)
 
 
 @app.post("/api/library/uploads", response_model=UploadedBookImportResponse)

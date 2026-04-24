@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.14.1`
+当前版本：`1.14.2`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -183,7 +183,7 @@ uvicorn app.main:app --reload
 POST /api/library/uploads
 ```
 
-如果你只是把这个地址直接复制进浏览器，现在也会返回接口说明，不会再只看到 `405 Method Not Allowed`。
+如果你直接把这个地址复制进浏览器，现在会打开一个可上传的网页，不再只显示接口说明 JSON。
 
 请求格式为 `multipart/form-data`，字段：
 

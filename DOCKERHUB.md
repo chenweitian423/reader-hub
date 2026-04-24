@@ -11,13 +11,13 @@ chenxiaotian423/reader-hub:latest
 当前发布版本：
 
 ```text
-1.14.1
+1.14.2
 ```
 
 每次迭代发布后，镜像会同时生成这些标签：
 
 - `latest`
-- `1.14.1`
+- `1.14.2`
 - `1.14`
 - `sha-<commit>`
 
@@ -126,7 +126,7 @@ http://localhost:8000
 POST /api/library/uploads
 ```
 
-直接在浏览器里访问这个地址时，镜像现在会返回一份 JSON 接口说明，不再只返回 `405 Method Not Allowed`。
+直接在浏览器里访问这个地址时，镜像现在会返回一个可直接上传文件的网页；程序调用时仍可继续使用同一个 POST 接口。
 
 请求格式：
 
