@@ -692,6 +692,76 @@ function formatFileSize(size) {
   return `${value.toFixed(digits)} ${units[index]}`;
 }
 
+function hashString(value) {
+  const text = String(value || "");
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function escapeSvgText(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildBookPlaceholderDataUrl(book, variant = "default") {
+  const title = String(book?.title || "未命名书籍").trim() || "未命名书籍";
+  const author = String(book?.author || "Reader Hub").trim() || "Reader Hub";
+  const palettes = [
+    ["#5b2f1a", "#c56d3c", "#f8e6cf"],
+    ["#1f3a5c", "#4c84b6", "#edf5ff"],
+    ["#3d2b57", "#8d69c6", "#f3eaff"],
+    ["#1d4b44", "#4b9a8f", "#e8faf7"],
+    ["#6c2d3a", "#d16f7f", "#fff0f2"],
+    ["#4b3520", "#bd9158", "#fbf0dc"],
+  ];
+  const [deep, accent, light] = palettes[hashString(`${title}-${author}`) % palettes.length];
+  const initials = title.replace(/\s+/g, "").slice(0, variant === "compact" ? 2 : 4) || "书籍";
+  const authorText = author.length > 12 ? `${author.slice(0, 12)}...` : author;
+  const titleText = title.length > 18 ? `${title.slice(0, 18)}...` : title;
+  const width = variant === "compact" ? 300 : 600;
+  const height = variant === "compact" ? 420 : 840;
+  const largeSize = variant === "compact" ? 108 : 168;
+  const titleSize = variant === "compact" ? 24 : 40;
+  const metaSize = variant === "compact" ? 16 : 22;
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${deep}" />
+          <stop offset="58%" stop-color="${accent}" />
+          <stop offset="100%" stop-color="${light}" />
+        </linearGradient>
+      </defs>
+      <rect width="${width}" height="${height}" rx="34" fill="url(#bg)" />
+      <circle cx="${width - 72}" cy="74" r="88" fill="rgba(255,255,255,0.10)" />
+      <circle cx="48" cy="${height - 48}" r="120" fill="rgba(255,255,255,0.08)" />
+      <text x="44" y="84" fill="rgba(255,255,255,0.82)" font-size="${metaSize}" font-family="PingFang SC, Noto Sans SC, sans-serif" letter-spacing="4">READER HUB</text>
+      <text x="44" y="${variant === "compact" ? 208 : 294}" fill="rgba(255,255,255,0.94)" font-size="${largeSize}" font-weight="800" font-family="PingFang SC, Noto Sans SC, sans-serif">${escapeSvgText(initials)}</text>
+      <text x="44" y="${variant === "compact" ? 284 : 404}" fill="#ffffff" font-size="${titleSize}" font-weight="700" font-family="PingFang SC, Noto Sans SC, sans-serif">${escapeSvgText(titleText)}</text>
+      <text x="44" y="${variant === "compact" ? 324 : 452}" fill="rgba(255,255,255,0.9)" font-size="${metaSize}" font-family="PingFang SC, Noto Sans SC, sans-serif">作者：${escapeSvgText(authorText)}</text>
+      <rect x="44" y="${height - (variant === "compact" ? 102 : 128)}" width="${variant === "compact" ? 110 : 148}" height="${variant === "compact" ? 34 : 42}" rx="17" fill="rgba(255,255,255,0.16)" />
+      <text x="${variant === "compact" ? 99 : 118}" y="${height - (variant === "compact" ? 80 : 99)}" text-anchor="middle" fill="#ffffff" font-size="${metaSize}" font-weight="700" font-family="PingFang SC, Noto Sans SC, sans-serif">暂无封面</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function applyBookCoverImage(imageElement, book, variant = "default") {
+  if (!imageElement) return;
+  const src = String(book?.cover || "").trim() || buildBookPlaceholderDataUrl(book, variant);
+  imageElement.src = src;
+  imageElement.style.display = "block";
+  imageElement.classList.toggle("cover-placeholder", !String(book?.cover || "").trim());
+}
+
 function setShelfUploadProgress(percent, text = "等待选择文件") {
   const normalized = Math.max(0, Math.min(100, Number(percent) || 0));
   if (elements.shelfUploadProgressBar) {
@@ -1359,8 +1429,7 @@ function renderHomeSpotlight() {
     elements.homeSpotlightAuthor.textContent = "首页会把当前最值得打开的一本书放在这里。";
     elements.homeSpotlightIntro.textContent =
       "你可以直接搜索“月”“凡人”或“诡秘”，这里会自动切换成搜索结果、最近在读或书架里的焦点书。";
-    elements.homeSpotlightCover.style.display = "none";
-    elements.homeSpotlightCover.removeAttribute("src");
+    applyBookCoverImage(elements.homeSpotlightCover, { title: "Reader Hub", author: "书城首页" });
     bindHomeSpotlightButtons(null);
     return;
   }
@@ -1371,13 +1440,7 @@ function renderHomeSpotlight() {
   elements.homeSpotlightTitle.textContent = book.title || "未命名书籍";
   elements.homeSpotlightAuthor.textContent = book.author ? `作者：${book.author}` : "作者信息待补充";
   elements.homeSpotlightIntro.textContent = book.intro || "这本书还没有简介，可以直接打开看看内容。";
-  if (book.cover) {
-    elements.homeSpotlightCover.src = book.cover;
-    elements.homeSpotlightCover.style.display = "block";
-  } else {
-    elements.homeSpotlightCover.removeAttribute("src");
-    elements.homeSpotlightCover.style.display = "none";
-  }
+  applyBookCoverImage(elements.homeSpotlightCover, book);
   bindHomeSpotlightButtons(payload);
 }
 
@@ -1648,8 +1711,7 @@ function renderResultDetail(book) {
     elements.resultDetailTags.innerHTML = "";
     elements.resultDetailRelated.className = "result-detail-related-list empty";
     elements.resultDetailRelated.textContent = "选中一本书后，这里会补充同作者或同来源推荐。";
-    elements.resultDetailCover.style.display = "none";
-    elements.resultDetailCover.removeAttribute("src");
+    applyBookCoverImage(elements.resultDetailCover, { title: "书籍详情", author: "Reader Hub" });
     bindResultDetailButtons(null);
     return;
   }
@@ -1691,13 +1753,7 @@ function renderResultDetail(book) {
     elements.resultDetailTags.appendChild(chip);
   });
 
-  if (book.cover) {
-    elements.resultDetailCover.src = book.cover;
-    elements.resultDetailCover.style.display = "block";
-  } else {
-    elements.resultDetailCover.removeAttribute("src");
-    elements.resultDetailCover.style.display = "none";
-  }
+  applyBookCoverImage(elements.resultDetailCover, book);
 
   const relatedBooks = getRelatedBooks(book, 3);
   if (!relatedBooks.length) {
@@ -1776,8 +1832,7 @@ async function showBookDetail(book) {
     elements.bookDetailChapterCount.textContent = "0";
     elements.bookDetailRelated.className = "discovery-list empty";
     elements.bookDetailRelated.textContent = "选中一本书后，这里会补充同作者或同来源推荐。";
-    elements.bookDetailCover.style.display = "none";
-    elements.bookDetailCover.removeAttribute("src");
+    applyBookCoverImage(elements.bookDetailCover, { title: "书籍详情", author: "Reader Hub" });
     bindBookDetailActions(null, false);
     return;
   }
@@ -1818,13 +1873,7 @@ async function showBookDetail(book) {
     elements.bookDetailTags.appendChild(chip);
   });
 
-  if (book.cover) {
-    elements.bookDetailCover.src = book.cover;
-    elements.bookDetailCover.style.display = "block";
-  } else {
-    elements.bookDetailCover.removeAttribute("src");
-    elements.bookDetailCover.style.display = "none";
-  }
+  applyBookCoverImage(elements.bookDetailCover, book);
 
   const relatedBooks = getRelatedBooks(book, 6).map((item) => ({
     title: item.title || "未命名书籍",
@@ -2337,15 +2386,8 @@ function renderShelf() {
       tags.appendChild(chip);
     });
 
-    if (book.cover) {
-      cover.src = book.cover;
-      cover.style.display = "block";
-      coverWrap.textContent = "";
-    } else {
-      cover.removeAttribute("src");
-      cover.style.display = "none";
-      coverWrap.textContent = "暂无封面";
-    }
+    coverWrap.textContent = "";
+    applyBookCoverImage(cover, book, "compact");
 
     resumeBtn.addEventListener("click", () => continueShelfBook(book));
     removeBtn.addEventListener("click", () => handleShelfRemoval(book));
@@ -2549,15 +2591,8 @@ function renderResults(items = state.results) {
     badge.className = `result-badge ${readable ? "readable" : "external"}`;
     fragment.querySelector(".result-card").classList.toggle("active", item.book_key === state.ui.selectedResultKey);
 
-    if (item.cover) {
-      cover.src = item.cover;
-      cover.style.display = "block";
-      coverWrap.textContent = "";
-    } else {
-      cover.removeAttribute("src");
-      cover.style.display = "none";
-      coverWrap.textContent = "暂无封面";
-    }
+    coverWrap.textContent = "";
+    applyBookCoverImage(cover, item, "compact");
 
     if (item.detail_url) {
       link.href = item.detail_url;
@@ -2615,13 +2650,7 @@ function renderReaderShell(bookOpenPayload) {
   elements.readerBookMeta.textContent = metaParts.join(" · ") || "暂无补充信息";
   elements.readerBookIntro.textContent = book.intro || "暂无简介";
 
-  if (book.cover) {
-    elements.readerBookCover.src = book.cover;
-    elements.readerBookCover.style.display = "block";
-  } else {
-    elements.readerBookCover.removeAttribute("src");
-    elements.readerBookCover.style.display = "none";
-  }
+  applyBookCoverImage(elements.readerBookCover, book);
 
   elements.chapterCount.textContent = String(chapters.length);
   renderChapterList();
