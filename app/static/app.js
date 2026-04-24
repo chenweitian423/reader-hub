@@ -59,6 +59,22 @@ let prefetchPollTimer = null;
 let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["txt", "md", "epub"]);
+const BQG_STANDARD_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+  Accept: "*/*",
+  Referer: "https://www.bqg496.xyz/",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
+const BQG_STRICT_HEADERS = {
+  ...BQG_STANDARD_HEADERS,
+  "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+  Origin: "https://www.bqg496.xyz",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+};
+
 const PRIVATE_SITE_PRESETS = {
   bqg_api: {
     label: "笔趣阁前端站",
@@ -66,13 +82,65 @@ const PRIVATE_SITE_PRESETS = {
       name: "笔趣阁前端站示例",
       description: "适合前端页面 + JSON API 的笔趣阁类站点，可直接接入搜索、目录和正文",
       base_url: "https://www.bqg496.xyz",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-        Accept: "*/*",
-        Referer: "https://www.bqg496.xyz/",
-        "X-Requested-With": "XMLHttpRequest",
-      },
+      headers: BQG_STANDARD_HEADERS,
+      search_url: "https://www.bqg496.xyz/api/search?q={keyword}",
+      search_list: "data",
+      search_title: "title",
+      search_author: "author",
+      search_cover: "",
+      search_intro: "intro",
+      search_detail_url: "id",
+      search_latest_chapter: "",
+      detail_title: "title",
+      detail_author: "author",
+      detail_cover: "",
+      detail_intro: "intro",
+      detail_status: "full",
+      toc_list: "list",
+      toc_title: "value",
+      toc_url: "_index",
+      toc_next_url: "",
+      content_body: "txt",
+      content_next_url: "",
+      test_keyword: "凡人修仙",
+    },
+  },
+  bqg_api_standard: {
+    label: "笔趣阁前端站（标准版）",
+    values: {
+      name: "笔趣阁前端站标准版",
+      description: "适合大多数前端页面 + JSON API 的笔趣阁类站点，常规请求头即可命中",
+      base_url: "https://www.bqg496.xyz",
+      headers: BQG_STANDARD_HEADERS,
+      search_url: "https://www.bqg496.xyz/api/search?q={keyword}",
+      search_list: "data",
+      search_title: "title",
+      search_author: "author",
+      search_cover: "",
+      search_intro: "intro",
+      search_detail_url: "id",
+      search_latest_chapter: "",
+      detail_title: "title",
+      detail_author: "author",
+      detail_cover: "",
+      detail_intro: "intro",
+      detail_status: "full",
+      toc_list: "list",
+      toc_title: "value",
+      toc_url: "_index",
+      toc_next_url: "",
+      content_body: "txt",
+      content_next_url: "",
+      test_keyword: "凡人修仙",
+    },
+  },
+  bqg_api_cf: {
+    label: "笔趣阁前端站（严格请求头）",
+    values: {
+      name: "笔趣阁前端站严格版",
+      description: "适合对请求头更敏感、需要更像浏览器 AJAX 请求的笔趣阁类站点",
+      base_url: "https://www.bqg496.xyz",
+      headers: BQG_STRICT_HEADERS,
       search_url: "https://www.bqg496.xyz/api/search?q={keyword}",
       search_list: "data",
       search_title: "title",
@@ -2088,7 +2156,7 @@ async function loadSampleJson() {
 }
 
 function loadPrivateSiteSample() {
-  applyPrivateSitePreset("bqg_api");
+  applyPrivateSitePreset("bqg_api_standard");
 }
 
 function fillPrivateSiteForm(site) {
