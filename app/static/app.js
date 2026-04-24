@@ -11,6 +11,7 @@ const state = {
     lastBrowsePage: "search",
     selectedResultKey: null,
     recentSearches: [],
+    readingHistory: [],
     pendingUploadFiles: [],
     sourcePage: 1,
     sourcePageSize: 12,
@@ -63,6 +64,7 @@ let preferenceSaveTimer = null;
 let prefetchPollTimer = null;
 let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
+const READING_HISTORY_STORAGE_KEY = "reader-hub-reading-history";
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["txt", "md", "epub"]);
 const themeLabelMap = {
   warm: "暖纸",
@@ -496,6 +498,8 @@ const elements = {
   profileGoSearchBtn: document.querySelector("#profile-go-search-btn"),
   profileGoShelfBtn: document.querySelector("#profile-go-shelf-btn"),
   profileGoReaderBtn: document.querySelector("#profile-go-reader-btn"),
+  profileRecentReading: document.querySelector("#profile-recent-reading"),
+  profileSearchHistory: document.querySelector("#profile-search-history"),
   menuButtons: Array.from(document.querySelectorAll(".menu-btn")),
   pagePanels: Array.from(document.querySelectorAll(".page-panel")),
   keywordChips: Array.from(document.querySelectorAll(".keyword-chip")),
@@ -509,6 +513,8 @@ const elements = {
   homeContinueList: document.querySelector("#home-continue-list"),
   homeReadableList: document.querySelector("#home-readable-list"),
   homeShelfPicks: document.querySelector("#home-shelf-picks"),
+  homeRankingList: document.querySelector("#home-ranking-list"),
+  homeCategoryList: document.querySelector("#home-category-list"),
   homeRecentSearches: document.querySelector("#home-recent-searches"),
   homeUpdatesList: document.querySelector("#home-updates-list"),
   homeRelatedList: document.querySelector("#home-related-list"),
@@ -919,10 +925,27 @@ function loadRecentSearches() {
   }
 }
 
+function loadReadingHistory() {
+  try {
+    const raw = window.localStorage.getItem(READING_HISTORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    state.ui.readingHistory = Array.isArray(parsed) ? parsed.filter(Boolean).slice(0, 10) : [];
+  } catch {
+    state.ui.readingHistory = [];
+  }
+}
+
 function persistRecentSearches() {
   window.localStorage.setItem(
     RECENT_SEARCH_STORAGE_KEY,
     JSON.stringify(state.ui.recentSearches.slice(0, 8)),
+  );
+}
+
+function persistReadingHistory() {
+  window.localStorage.setItem(
+    READING_HISTORY_STORAGE_KEY,
+    JSON.stringify(state.ui.readingHistory.slice(0, 10)),
   );
 }
 
@@ -934,6 +957,25 @@ function rememberRecentSearch(keyword) {
     ...state.ui.recentSearches.filter((item) => item !== normalized),
   ].slice(0, 8);
   persistRecentSearches();
+}
+
+function rememberReadingBook(book, chapterTitle = "") {
+  if (!book?.book_key) return;
+  const item = {
+    book_key: book.book_key,
+    title: book.title || "未命名书籍",
+    author: book.author || "",
+    source_id: book.source_id || state.reader.sourceId || 0,
+    source_name: book.source_name || state.reader.sourceName || "",
+    latest_chapter: chapterTitle || "",
+    at: new Date().toISOString(),
+    book,
+  };
+  state.ui.readingHistory = [
+    item,
+    ...state.ui.readingHistory.filter((entry) => entry.book_key !== item.book_key),
+  ].slice(0, 10);
+  persistReadingHistory();
 }
 
 function clearPrefetchPolling() {
@@ -1143,7 +1185,33 @@ function renderProfile() {
   elements.profileWidthValue.textContent = `${state.preferences.content_width}px`;
   elements.profileLineHeightValue.textContent = Number(state.preferences.line_height).toFixed(1);
   elements.profileGoShelfBtn.disabled = !currentUser();
-  elements.profileGoReaderBtn.disabled = !state.reader.book;
+  elements.profileGoReaderBtn.disabled = !(state.reader.book || state.ui.readingHistory.length);
+
+  const recentReadingItems = state.ui.readingHistory.slice(0, 6).map((item) => ({
+    title: item.title,
+    subtitle: item.author ? `作者：${item.author}` : item.source_name || "最近打开",
+    meta: item.latest_chapter || "点击继续阅读",
+    onClick: () => openBook(item.book, { autoRead: true }),
+  }));
+  renderInteractiveBookList(
+    elements.profileRecentReading,
+    recentReadingItems,
+    "打开过的书会出现在这里，方便从个人中心直接回到最近阅读位置。",
+  );
+
+  const searchHistoryItems = state.ui.recentSearches.slice(0, 10).map((keyword) => ({
+    label: keyword,
+    value: keyword,
+  }));
+  renderHistoryChips(
+    elements.profileSearchHistory,
+    searchHistoryItems,
+    (value) => {
+      setActivePage("search");
+      runQuickSearch(value);
+    },
+    "你的最近搜索会显示在这里，方便一键重新开始。",
+  );
 }
 
 function setSelectedResult(book) {
@@ -1392,6 +1460,73 @@ function renderRecentSearches() {
   });
 }
 
+function renderHistoryChips(target, items, onSelect, emptyText) {
+  if (!items.length) {
+    target.className = "search-history-list empty";
+    target.textContent = emptyText;
+    return;
+  }
+
+  target.className = "search-history-list";
+  target.innerHTML = "";
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "history-chip";
+    button.textContent = item.label;
+    button.addEventListener("click", item.onClick || (() => onSelect(item.value)));
+    target.appendChild(button);
+  });
+}
+
+function renderHomeRankings() {
+  const rankingItems = [...state.shelfBooks]
+    .sort((left, right) => {
+      const leftTime = new Date(left.last_read_at || left.added_at).getTime();
+      const rightTime = new Date(right.last_read_at || right.added_at).getTime();
+      return rightTime - leftTime;
+    })
+    .slice(0, 5)
+    .map((book, index) => ({
+      title: `${index + 1}. ${book.title || "未命名书籍"}`,
+      subtitle: book.author ? `作者：${book.author}` : "书架收藏",
+      meta: book.last_chapter_title || `来源：${book.source_name}`,
+      onClick: () => continueShelfBook(book),
+    }));
+
+  renderInteractiveBookList(
+    elements.homeRankingList,
+    rankingItems,
+    "书架里开始有阅读数据后，这里会优先展示最近最值得继续看的书。",
+  );
+}
+
+function renderHomeCategories() {
+  const categoryValues = new Set();
+  state.shelfBooks.forEach((book) => {
+    if (book.category) categoryValues.add(book.category);
+    (book.tags || []).slice(0, 2).forEach((tag) => categoryValues.add(tag));
+  });
+  state.ui.recentSearches.slice(0, 4).forEach((keyword) => categoryValues.add(keyword));
+
+  const items = Array.from(categoryValues)
+    .filter(Boolean)
+    .slice(0, 12)
+    .map((value) => ({
+      label: value,
+      value,
+    }));
+
+  renderHistoryChips(
+    elements.homeCategoryList,
+    items,
+    (value) => {
+      runQuickSearch(value);
+    },
+    "书架分类、标签和近期搜索会整理成可点选入口，方便更快开始找书。",
+  );
+}
+
 function renderDiscoverySections() {
   renderRecentSearches();
 
@@ -1559,6 +1694,8 @@ function renderHomeSurface() {
   renderHomeSpotlight();
   renderHomeContinue();
   renderHomeRails();
+  renderHomeRankings();
+  renderHomeCategories();
   renderDiscoverySections();
 }
 
@@ -3148,6 +3285,7 @@ async function openBook(book, options = {}) {
     if (latestTask && ["pending", "running"].includes(latestTask.status)) {
       startPrefetchPolling(latestTask.task_id);
     }
+    rememberReadingBook(payload.book, options.resumeChapter?.title || "");
     updateReaderNav();
     setStatus(`已打开《${payload.book.title}》`, "success");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3227,6 +3365,7 @@ async function readChapter(index) {
     elements.readerContent.textContent = payload.content;
     setReaderToolbarHidden(false);
     setStatus(payload.cached ? "正文已从缓存加载" : "正文加载完成并已缓存", "success");
+    rememberReadingBook(state.reader.book, payload.chapter_title || chapter.title || "");
     await refreshCurrentBookCache(state.reader.book.book_key);
     await saveProgress(payload.chapter, index);
   } catch (error) {
@@ -3368,6 +3507,7 @@ async function handleDroppedUploadFiles(event) {
 }
 
 loadRecentSearches();
+loadReadingHistory();
 renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
 elements.privateSiteAutodetectBtn.addEventListener("click", autodetectPrivateSite);
@@ -3638,6 +3778,10 @@ elements.profileGoShelfBtn?.addEventListener("click", () => {
 elements.profileGoReaderBtn?.addEventListener("click", () => {
   if (state.reader.book) {
     setActivePage("reader");
+    return;
+  }
+  if (state.ui.readingHistory.length) {
+    openBook(state.ui.readingHistory[0].book, { autoRead: true });
   }
 });
 getScrollContainer().addEventListener(

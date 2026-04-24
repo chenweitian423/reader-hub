@@ -1,6 +1,6 @@
 # Reader Hub
 
-当前版本：`1.21.0`
+当前版本：`1.21.1`
 
 一个可 Docker 部署的轻量读书软件，支持：
 
@@ -82,7 +82,7 @@ docker compose up -d
 如果你希望固定到某个发布版本，可以先复制 [`.env.example`](/Users/sky/Documents/test/.env.example) 为 `.env`，然后把：
 
 ```text
-READER_HUB_IMAGE_TAG=1.21.0
+READER_HUB_IMAGE_TAG=1.21.1
 ```
 
 改成你要部署的镜像版本。
