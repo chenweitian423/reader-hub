@@ -3,6 +3,9 @@ const state = {
     title: "Reader Hub",
     version: "0.0.0",
   },
+  auth: {
+    user: null,
+  },
   ui: {
     activePage: "search",
     lastBrowsePage: "search",
@@ -314,6 +317,13 @@ const PRIVATE_SITE_PRESETS = {
 
 const elements = {
   sourceJson: document.querySelector("#source-json"),
+  authScreen: document.querySelector("#auth-screen"),
+  loginForm: document.querySelector("#login-form"),
+  loginUsername: document.querySelector("#login-username"),
+  loginPassword: document.querySelector("#login-password"),
+  loginStatus: document.querySelector("#login-status"),
+  currentUserBadge: document.querySelector("#current-user-badge"),
+  logoutBtn: document.querySelector("#logout-btn"),
   sourceFile: document.querySelector("#source-file"),
   importBtn: document.querySelector("#import-btn"),
   loadSampleBtn: document.querySelector("#load-sample-btn"),
@@ -461,6 +471,12 @@ const elements = {
   backupFile: document.querySelector("#backup-file"),
   backupImportBtn: document.querySelector("#backup-import-btn"),
   toolsVersionBadge: document.querySelector("#tools-version-badge"),
+  adminUserCount: document.querySelector("#admin-user-count"),
+  adminNewUsername: document.querySelector("#admin-new-username"),
+  adminNewPassword: document.querySelector("#admin-new-password"),
+  adminNewRole: document.querySelector("#admin-new-role"),
+  adminCreateUserBtn: document.querySelector("#admin-create-user-btn"),
+  adminUserList: document.querySelector("#admin-user-list"),
   menuButtons: Array.from(document.querySelectorAll(".menu-btn")),
   pagePanels: Array.from(document.querySelectorAll(".page-panel")),
   keywordChips: Array.from(document.querySelectorAll(".keyword-chip")),
@@ -499,6 +515,42 @@ const elements = {
 function setStatus(text, type = "idle") {
   elements.statusPill.textContent = text;
   elements.statusPill.className = `status-pill ${type}`;
+}
+
+function currentUser() {
+  return state.auth.user;
+}
+
+function userIsAdmin() {
+  return currentUser()?.role === "admin";
+}
+
+function setAuthState(user) {
+  state.auth.user = user || null;
+  const loggedIn = Boolean(state.auth.user);
+  elements.authScreen.classList.toggle("hidden", loggedIn);
+  elements.pageShell.classList.toggle("hidden", !loggedIn);
+  elements.logoutBtn.classList.toggle("hidden", !loggedIn);
+  elements.currentUserBadge.textContent = loggedIn
+    ? `${state.auth.user.username} · ${userIsAdmin() ? "管理员" : "用户"}`
+    : "未登录";
+}
+
+function applyRoleMode() {
+  const admin = userIsAdmin();
+  document.querySelectorAll("[data-role='admin']").forEach((element) => {
+    element.classList.toggle("hidden", !admin);
+  });
+  document.querySelectorAll(".admin-only").forEach((element) => {
+    element.classList.toggle("hidden", !admin);
+  });
+
+  if (!admin && ["shelf", "sources", "tools", "admin"].includes(state.ui.activePage)) {
+    state.ui.activePage = "search";
+  }
+  elements.menuButtons.forEach((button) => {
+    button.classList.toggle("hidden", button.dataset.role === "admin" && !admin);
+  });
 }
 
 function getSourceById(sourceId) {
@@ -1099,42 +1151,49 @@ function bindHomeSpotlightButtons(payload) {
   elements.homeSpotlightSecondary = document.querySelector("#home-spotlight-secondary");
 
   if (!payload) {
-    elements.homeSpotlightPrimary.textContent = "去导入书源";
-    elements.homeSpotlightSecondary.textContent = "查看书架";
-    elements.homeSpotlightPrimary.addEventListener("click", () => setActivePage("sources"));
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    elements.homeSpotlightPrimary.textContent = userIsAdmin() ? "去导入书源" : "开始搜索";
+    elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "查看书架" : "填写默认账号";
+    elements.homeSpotlightPrimary.addEventListener("click", () => setActivePage(userIsAdmin() ? "sources" : "search"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => {
+      if (userIsAdmin()) {
+        setActivePage("shelf");
+        return;
+      }
+      elements.keywordInput.focus();
+      elements.loginStatus.textContent = "默认用户：reader / reader123";
+    });
     return;
   }
 
   if (payload.kind === "reading") {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
-    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "查看书架" : "继续搜索";
     elements.homeSpotlightPrimary.addEventListener("click", () => {
       setActivePage("reader");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage(userIsAdmin() ? "shelf" : "search"));
     return;
   }
 
   if (payload.kind === "shelf" && payload.shelfBook) {
     elements.homeSpotlightPrimary.textContent = "继续阅读";
-    elements.homeSpotlightSecondary.textContent = "查看书架";
+    elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "查看书架" : "继续搜索";
     elements.homeSpotlightPrimary.addEventListener("click", () => continueShelfBook(payload.shelfBook));
-    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("shelf"));
+    elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage(userIsAdmin() ? "shelf" : "search"));
     return;
   }
 
-  elements.homeSpotlightPrimary.textContent = isReadableSource(payload.book.source_id) ? "打开阅读" : "加入书架";
-  elements.homeSpotlightSecondary.textContent = "管理书源";
+  elements.homeSpotlightPrimary.textContent = isReadableSource(payload.book.source_id) ? "打开阅读" : userIsAdmin() ? "加入书架" : "查看详情";
+  elements.homeSpotlightSecondary.textContent = userIsAdmin() ? "管理书源" : "继续搜索";
   elements.homeSpotlightPrimary.addEventListener("click", () => {
     if (isReadableSource(payload.book.source_id)) {
       openBook(payload.book);
-    } else {
+    } else if (userIsAdmin()) {
       toggleShelfBook(payload.book);
     }
   });
-  elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage("sources"));
+  elements.homeSpotlightSecondary.addEventListener("click", () => setActivePage(userIsAdmin() ? "sources" : "search"));
 }
 
 function renderHomeSpotlight() {
@@ -1330,27 +1389,37 @@ function bindResultDetailButtons(book) {
 
   if (!book) {
     elements.resultDetailPrimary.textContent = "开始搜索";
-    elements.resultDetailSecondary.textContent = "去书源管理";
+    elements.resultDetailSecondary.textContent = userIsAdmin() ? "去书源管理" : "输入关键词";
     elements.resultDetailPrimary.addEventListener("click", () => {
       elements.keywordInput.focus();
       setActivePage("search");
     });
-    elements.resultDetailSecondary.addEventListener("click", () => setActivePage("sources"));
+    elements.resultDetailSecondary.addEventListener("click", () => {
+      if (userIsAdmin()) {
+        setActivePage("sources");
+      } else {
+        elements.keywordInput.focus();
+      }
+    });
     return;
   }
 
   const readable = isReadableSource(book.source_id);
-  elements.resultDetailPrimary.textContent = readable ? "立即阅读" : "加入书架";
-  elements.resultDetailSecondary.textContent = isBookInShelf(book) ? "前往书架" : "收藏到书架";
+  elements.resultDetailPrimary.textContent = readable ? "立即阅读" : userIsAdmin() ? "加入书架" : "查看书籍";
+  elements.resultDetailSecondary.textContent = userIsAdmin()
+    ? isBookInShelf(book) ? "前往书架" : "收藏到书架"
+    : "返回搜索";
   elements.resultDetailPrimary.addEventListener("click", () => {
     if (readable) {
       openBook(book);
-    } else {
+    } else if (userIsAdmin()) {
       toggleShelfBook(book);
     }
   });
   elements.resultDetailSecondary.addEventListener("click", () => {
-    if (isBookInShelf(book)) {
+    if (!userIsAdmin()) {
+      setActivePage("search");
+    } else if (isBookInShelf(book)) {
       setActivePage("shelf");
     } else {
       toggleShelfBook(book);
@@ -1464,6 +1533,9 @@ function renderAppMeta() {
   if (elements.uploadPortalLink) {
     elements.uploadPortalLink.href = `${window.location.origin}/api/library/uploads`;
   }
+  if (currentUser()) {
+    elements.currentUserBadge.textContent = `${currentUser().username} · ${userIsAdmin() ? "管理员" : "用户"}`;
+  }
   document.title = `${state.appMeta.title} v${state.appMeta.version}`;
 }
 
@@ -1493,6 +1565,13 @@ async function apiFetch(url, options = {}) {
     },
     ...options,
   });
+
+  if (response.status === 401 && !options.allowUnauthorized) {
+    setAuthState(null);
+    applyRoleMode();
+    resetReader("登录已失效，请重新登录。");
+    throw new Error("请先登录");
+  }
 
   if (!response.ok) {
     let message = "请求失败";
@@ -1549,6 +1628,162 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
   updateCacheControls();
   updatePrefetchTaskUI();
   renderHomeSurface();
+}
+
+function renderAdminUsers(users = []) {
+  elements.adminUserCount.textContent = String(users.length);
+  if (!users.length) {
+    elements.adminUserList.className = "admin-user-list empty";
+    elements.adminUserList.textContent = "还没有用户数据。";
+    return;
+  }
+
+  elements.adminUserList.className = "admin-user-list";
+  elements.adminUserList.innerHTML = "";
+  users.forEach((user) => {
+    const card = document.createElement("article");
+    card.className = "admin-user-card";
+    card.innerHTML = `
+      <div class="admin-user-head">
+        <div>
+          <strong>${user.username}</strong>
+          <p class="muted">创建于 ${formatTime(user.created_at)}</p>
+        </div>
+        <div class="admin-user-meta">
+          <span class="badge">${user.role === "admin" ? "管理员" : "普通用户"}</span>
+          <span class="badge">${user.enabled ? "已启用" : "已停用"}</span>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <label class="setting-item">
+          <span>角色</span>
+          <select class="admin-user-role">
+            <option value="user" ${user.role === "user" ? "selected" : ""}>普通用户</option>
+            <option value="admin" ${user.role === "admin" ? "selected" : ""}>管理员</option>
+          </select>
+        </label>
+        <label class="setting-item">
+          <span>重置密码</span>
+          <input class="admin-user-password" type="password" placeholder="留空则不修改" />
+        </label>
+      </div>
+      <div class="admin-user-actions">
+        <button class="ghost-btn admin-user-save" type="button">保存修改</button>
+        <button class="ghost-btn admin-user-toggle" type="button">${user.enabled ? "停用账号" : "启用账号"}</button>
+        <button class="delete-btn admin-user-delete" type="button">删除账号</button>
+      </div>
+    `;
+    card.querySelector(".admin-user-save").addEventListener("click", async () => {
+      try {
+        await apiFetch(`/api/admin/users/${user.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            role: card.querySelector(".admin-user-role").value,
+            password: card.querySelector(".admin-user-password").value,
+          }),
+        });
+        setStatus(`已更新用户 ${user.username}`, "success");
+        await refreshAdminUsers();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+    card.querySelector(".admin-user-toggle").addEventListener("click", async () => {
+      try {
+        await apiFetch(`/api/admin/users/${user.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !user.enabled }),
+        });
+        setStatus(`已更新用户 ${user.username}`, "success");
+        await refreshAdminUsers();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+    card.querySelector(".admin-user-delete").addEventListener("click", async () => {
+      if (!window.confirm(`确认删除用户 ${user.username} 吗？`)) return;
+      try {
+        await apiFetch(`/api/admin/users/${user.id}`, { method: "DELETE", headers: {} });
+        setStatus(`已删除用户 ${user.username}`, "success");
+        await refreshAdminUsers();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+    elements.adminUserList.appendChild(card);
+  });
+}
+
+async function refreshCurrentUser() {
+  const payload = await apiFetch("/api/auth/me", {
+    method: "GET",
+    headers: {},
+    allowUnauthorized: true,
+  }).catch(() => null);
+  state.auth.user = payload;
+  setAuthState(payload);
+  applyRoleMode();
+  return payload;
+}
+
+async function refreshAdminUsers() {
+  if (!userIsAdmin()) {
+    renderAdminUsers([]);
+    return;
+  }
+  const users = await apiFetch("/api/admin/users", { method: "GET", headers: {} });
+  renderAdminUsers(users);
+}
+
+async function initializeAuthenticatedApp() {
+  await refreshSources();
+  await refreshPreferences();
+  if (userIsAdmin()) {
+    await refreshShelf();
+    await refreshSummary();
+    await refreshAdminUsers();
+  } else {
+    state.shelfBooks = [];
+    state.summary = {
+      source_count: 0,
+      enabled_source_count: 0,
+      shelf_count: 0,
+      cached_chapter_count: 0,
+      reading_count: 0,
+    };
+    renderHomeSurface();
+    renderResults();
+  }
+  resetReader();
+  setActivePage("search");
+}
+
+async function loginWithPassword(username, password) {
+  const payload = await apiFetch("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  setAuthState(payload.user);
+  applyRoleMode();
+  await initializeAuthenticatedApp();
+  setStatus(`欢迎回来，${payload.user.username}`, "success");
+}
+
+async function logoutCurrentUser() {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST", headers: {}, allowUnauthorized: true });
+  } catch {
+    // noop
+  }
+  state.sources = [];
+  state.shelfBooks = [];
+  state.results = [];
+  resetReader("请登录后继续使用阅读器。");
+  renderResults([]);
+  renderSources();
+  renderAdminUsers([]);
+  setAuthState(null);
+  applyRoleMode();
 }
 
 function renderSourceFilterOptions() {
@@ -1760,11 +1995,11 @@ function renderSourceStatus(items = []) {
   if (!items.length) {
     elements.sourceStatusSummary.textContent = state.sources.length
       ? `已连接 ${state.sources.length} 个书源。搜索后这里只保留关键摘要，详细来源信息会折叠起来。`
-      : "导入书源后即可搜索。";
+      : userIsAdmin() ? "导入书源后即可搜索。" : "当前还没有可用书源，请联系管理员配置。";
     elements.sourceStatus.className = "source-status muted";
     elements.sourceStatus.textContent = state.sources.length
       ? "书源已准备好，输入关键词开始搜索。"
-      : "导入书源后即可搜索。";
+      : userIsAdmin() ? "导入书源后即可搜索。" : "当前还没有可用书源，请联系管理员配置。";
     return;
   }
 
@@ -1902,13 +2137,17 @@ function renderResults(items = state.results) {
       ? "当前筛选条件把结果过滤掉了，放宽来源、能力或书架条件后就会重新出现可选书单。"
       : state.sources.length
         ? "搜索后，结果书单会直接出现在这里；如果某个来源失败，顶部搜索状态会给出原因。"
-        : "先导入至少一个可用书源，再回来搜索，结果区会直接变成可点选书单。";
+        : userIsAdmin()
+          ? "先导入至少一个可用书源，再回来搜索，结果区会直接变成可点选书单。"
+          : "当前还没有可用书源，请联系管理员配置后再来搜索。";
     elements.results.className = "results empty";
     elements.results.textContent = state.results.length
       ? "当前筛选条件下没有结果，换个过滤条件试试。"
       : state.sources.length
         ? "还没有搜索结果，输入关键词开始搜索；如果某个来源失败，搜索状态里会显示具体原因。"
-        : "还没有结果，先到“书源管理”导入书源，再回来搜索。";
+        : userIsAdmin()
+          ? "还没有结果，先到“书源管理”导入书源，再回来搜索。"
+          : "还没有可搜索结果，请联系管理员先配置书源。";
     renderHomeSpotlight();
     renderHomeRails();
     renderResultDetail(null);
@@ -1972,8 +2211,11 @@ function renderResults(items = state.results) {
       readBtn.addEventListener("click", () => openBook(item));
     }
 
+    collectBtn.classList.toggle("hidden", !userIsAdmin());
     collectBtn.textContent = inShelf ? "已在书架" : "加入书架";
-    collectBtn.addEventListener("click", () => toggleShelfBook(item));
+    if (userIsAdmin()) {
+      collectBtn.addEventListener("click", () => toggleShelfBook(item));
+    }
     fragment.querySelector(".result-card").addEventListener("click", (event) => {
       if (event.target.closest("button, a")) return;
       setSelectedResult(item);
@@ -2110,7 +2352,9 @@ async function refreshSources() {
   state.ui.sourcePage = Math.min(state.ui.sourcePage, totalPages);
   renderSources();
   renderResults();
-  await refreshSummary();
+  if (userIsAdmin()) {
+    await refreshSummary();
+  }
 }
 
 async function refreshAppMeta() {
@@ -2124,7 +2368,9 @@ async function refreshShelf() {
   renderResults();
   updateReaderShelfButton();
   updateReaderMetadataForm();
-  await refreshSummary();
+  if (userIsAdmin()) {
+    await refreshSummary();
+  }
 }
 
 async function refreshPreferences() {
@@ -2868,10 +3114,17 @@ async function openBook(book, options = {}) {
       }),
     });
     renderReaderShell(payload);
-    await refreshCurrentBookCache(payload.book.book_key);
-    const latestTask = await refreshLatestPrefetchTask(payload.book.book_key);
-    if (latestTask && ["pending", "running"].includes(latestTask.status)) {
-      startPrefetchPolling(latestTask.task_id);
+    if (userIsAdmin()) {
+      await refreshCurrentBookCache(payload.book.book_key);
+      const latestTask = await refreshLatestPrefetchTask(payload.book.book_key);
+      if (latestTask && ["pending", "running"].includes(latestTask.status)) {
+        startPrefetchPolling(latestTask.task_id);
+      }
+    } else {
+      state.cachedChapters = [];
+      state.prefetchTask = null;
+      updateCacheControls();
+      updatePrefetchTaskUI();
     }
     updateReaderNav();
     setStatus(`已打开《${payload.book.title}》`, "success");
@@ -2901,7 +3154,7 @@ async function continueShelfBook(shelfBook) {
 
 async function saveProgress(chapter, chapterIndex) {
   const book = currentReaderBook();
-  if (!book || !book.book_key) return;
+  if (!book || !book.book_key || !userIsAdmin()) return;
 
   try {
     await apiFetch(`/api/library/books/${book.book_key}/progress`, {
@@ -2952,7 +3205,9 @@ async function readChapter(index) {
     elements.readerContent.textContent = payload.content;
     setReaderToolbarHidden(false);
     setStatus(payload.cached ? "正文已从缓存加载" : "正文加载完成并已缓存", "success");
-    await refreshCurrentBookCache(state.reader.book.book_key);
+    if (userIsAdmin()) {
+      await refreshCurrentBookCache(state.reader.book.book_key);
+    }
     await saveProgress(payload.chapter, index);
   } catch (error) {
     elements.readerStatus.textContent = error.message;
@@ -3300,6 +3555,46 @@ elements.backupFile.addEventListener("change", (event) => {
   if (!file) return;
   setStatus(`已选择备份文件: ${file.name}`, "idle");
 });
+elements.loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const username = elements.loginUsername.value.trim();
+  const password = elements.loginPassword.value;
+  if (!username || !password) {
+    elements.loginStatus.textContent = "请输入用户名和密码";
+    return;
+  }
+  elements.loginStatus.textContent = "正在登录...";
+  try {
+    await loginWithPassword(username, password);
+    elements.loginPassword.value = "";
+    elements.loginStatus.textContent = `已登录为 ${username}`;
+  } catch (error) {
+    elements.loginStatus.textContent = error.message || "登录失败";
+  }
+});
+elements.logoutBtn.addEventListener("click", async () => {
+  await logoutCurrentUser();
+  elements.loginStatus.textContent = "你已退出登录";
+});
+elements.adminCreateUserBtn?.addEventListener("click", async () => {
+  try {
+    await apiFetch("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({
+        username: elements.adminNewUsername.value.trim(),
+        password: elements.adminNewPassword.value,
+        role: elements.adminNewRole.value,
+      }),
+    });
+    elements.adminNewUsername.value = "";
+    elements.adminNewPassword.value = "";
+    elements.adminNewRole.value = "user";
+    await refreshAdminUsers();
+    setStatus("用户已创建", "success");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
 elements.menuButtons.forEach((button) => {
   button.addEventListener("click", () => {
     setActivePage(button.dataset.page);
@@ -3344,14 +3639,19 @@ document.addEventListener("click", (event) => {
   setReaderMenuOpen(false);
 });
 
-Promise.all([refreshAppMeta(), refreshSources(), refreshShelf(), refreshPreferences()])
-  .then(() => {
-    resetReader();
-    setActivePage("search");
+(async () => {
+  try {
+    await refreshAppMeta();
+    await refreshCurrentUser();
+    if (currentUser()) {
+      await initializeAuthenticatedApp();
+    } else {
+      resetReader("请先登录后继续使用 Reader Hub。");
+      setStatus("请先登录", "idle");
+    }
     renderAppMeta();
-    renderSummary();
-  })
-  .catch((error) => {
+  } catch (error) {
     setStatus(error.message, "error");
     resetReader("初始化失败，请检查接口是否正常。");
-  });
+  }
+})();

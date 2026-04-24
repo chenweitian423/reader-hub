@@ -90,6 +90,11 @@ Compose 默认包含这些环境变量：
 - `READER_HUB_DATABASE_URL=sqlite:///./data/app.db`
 - `READER_HUB_APP_TITLE=Reader Hub`
 - `READER_HUB_AUTO_SEED_DEMO_SOURCE=true`
+- `READER_HUB_ADMIN_USERNAME=admin`
+- `READER_HUB_ADMIN_PASSWORD=admin123`
+- `READER_HUB_DEFAULT_USER_USERNAME=reader`
+- `READER_HUB_DEFAULT_USER_PASSWORD=reader123`
+- `READER_HUB_SESSION_DAYS=14`
 - `READER_HUB_CORS_ORIGINS=*`
 
 镜像使用说明文档已整理在 [DOCKERHUB.md](/Users/sky/Documents/test/DOCKERHUB.md)，便于后续同步到 Docker Hub 仓库说明。
@@ -136,6 +141,31 @@ uvicorn app.main:app --reload
 - 默认值：`*`
 - 用途：配置局域网上传接口等前端调用允许的跨域来源
 - 示例：`http://192.168.123.10:3000,https://reader.example.com`
+
+### `READER_HUB_ADMIN_USERNAME`
+
+- 默认值：`admin`
+- 用途：设置默认管理员用户名
+
+### `READER_HUB_ADMIN_PASSWORD`
+
+- 默认值：`admin123`
+- 用途：设置默认管理员初始密码
+
+### `READER_HUB_DEFAULT_USER_USERNAME`
+
+- 默认值：`reader`
+- 用途：设置默认普通用户名
+
+### `READER_HUB_DEFAULT_USER_PASSWORD`
+
+- 默认值：`reader123`
+- 用途：设置默认普通用户初始密码
+
+### `READER_HUB_SESSION_DAYS`
+
+- 默认值：`14`
+- 用途：设置登录会话保留天数
 
 ## 4. 快速体验
 

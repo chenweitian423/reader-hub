@@ -22,6 +22,33 @@ class BookSource(Base):
     )
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(Text, nullable=False, unique=True, index=True)
+    password_hash = Column(Text, nullable=False, default="")
+    role = Column(Text, nullable=False, default="user")
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(Text, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
 class ShelfBook(Base):
     __tablename__ = "shelf_books"
 

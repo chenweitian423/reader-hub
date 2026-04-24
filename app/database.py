@@ -39,3 +39,7 @@ def run_migrations() -> None:
                 connection.execute(text("ALTER TABLE shelf_books ADD COLUMN category TEXT NOT NULL DEFAULT ''"))
             if "tags_json" not in columns:
                 connection.execute(text("ALTER TABLE shelf_books ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'"))
+        if "users" in inspector.get_table_names():
+            columns = {column["name"] for column in inspector.get_columns("users")}
+            if "enabled" not in columns:
+                connection.execute(text("ALTER TABLE users ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1"))

@@ -254,6 +254,35 @@ class AppMetaRead(BaseModel):
     version: str
 
 
+class UserRead(BaseModel):
+    id: int
+    username: str
+    role: str
+    enabled: bool
+    created_at: datetime
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    user: UserRead
+
+
+class AdminUserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+
+
+class AdminUserUpdate(BaseModel):
+    password: str = ""
+    role: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
 class ChapterCacheRequest(BaseModel):
     source_id: int
     book: dict[str, Any]

@@ -90,6 +90,31 @@ http://localhost:8000
 - 作用：配置局域网上传接口等前端调用允许的跨域来源
 - 例子：`http://192.168.123.10:3000,https://reader.example.com`
 
+### `READER_HUB_ADMIN_USERNAME`
+
+- 默认值：`admin`
+- 作用：设置默认管理员用户名
+
+### `READER_HUB_ADMIN_PASSWORD`
+
+- 默认值：`admin123`
+- 作用：设置默认管理员初始密码
+
+### `READER_HUB_DEFAULT_USER_USERNAME`
+
+- 默认值：`reader`
+- 作用：设置默认普通用户名
+
+### `READER_HUB_DEFAULT_USER_PASSWORD`
+
+- 默认值：`reader123`
+- 作用：设置默认普通用户初始密码
+
+### `READER_HUB_SESSION_DAYS`
+
+- 默认值：`14`
+- 作用：设置登录会话保留天数
+
 ## 健康检查
 
 镜像已内置健康检查，探测地址：

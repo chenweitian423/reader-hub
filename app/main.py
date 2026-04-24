@@ -6,14 +6,14 @@ import json
 import os
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,9 +22,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db, init_db
-from app.models import BookSource, CachedChapter, PrefetchTask, ReaderPreference, ShelfBook
+from app.models import BookSource, CachedChapter, PrefetchTask, ReaderPreference, ShelfBook, User, UserSession
 from app.schemas import (
+    AdminUserCreate,
+    AdminUserUpdate,
     AppMetaRead,
+    AuthResponse,
     BackupRestoreRequest,
     BackupRestoreResponse,
     BookOpenRequest,
@@ -42,6 +45,7 @@ from app.schemas import (
     PrivateSiteSourceRequest,
     PrivateSiteTestRequest,
     PrivateSiteTestResponse,
+    LoginRequest,
     PrefetchTaskRead,
     ReaderPreferenceRead,
     ReaderPreferenceUpdate,
@@ -52,6 +56,7 @@ from app.schemas import (
     ShelfBookRead,
     ShelfBookUpdate,
     SourceBulkDeleteRequest,
+    UserRead,
     UploadedBookImportItem,
     UploadedBookImportResponse,
 )
@@ -83,6 +88,12 @@ STATIC_DIR = BASE_DIR / "static"
 SAMPLE_SOURCES_PATH = STATIC_DIR / "sample_sources.json"
 BACKGROUND_PREFETCH_TASKS: set[asyncio.Task[Any]] = set()
 APP_TITLE = os.getenv("READER_HUB_APP_TITLE", "Reader Hub").strip() or "Reader Hub"
+SESSION_COOKIE_NAME = "reader_hub_session"
+SESSION_DURATION_DAYS = int(os.getenv("READER_HUB_SESSION_DAYS", "14"))
+DEFAULT_ADMIN_USERNAME = os.getenv("READER_HUB_ADMIN_USERNAME", "admin").strip() or "admin"
+DEFAULT_ADMIN_PASSWORD = os.getenv("READER_HUB_ADMIN_PASSWORD", "admin123").strip() or "admin123"
+DEFAULT_USER_USERNAME = os.getenv("READER_HUB_DEFAULT_USER_USERNAME", "reader").strip() or "reader"
+DEFAULT_USER_PASSWORD = os.getenv("READER_HUB_DEFAULT_USER_PASSWORD", "reader123").strip() or "reader123"
 AUTO_SEED_DEMO_SOURCE = os.getenv("READER_HUB_AUTO_SEED_DEMO_SOURCE", "true").strip().lower() not in {
     "0",
     "false",
@@ -228,9 +239,84 @@ def ensure_demo_source_seeded() -> None:
         db.close()
 
 
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def serialize_user(user: User) -> UserRead:
+    return UserRead(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        enabled=user.enabled,
+        created_at=user.created_at,
+    )
+
+
+def ensure_default_users_seeded() -> None:
+    db = SessionLocal()
+    try:
+        defaults = [
+            (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD, "admin"),
+            (DEFAULT_USER_USERNAME, DEFAULT_USER_PASSWORD, "user"),
+        ]
+        for username, password, role in defaults:
+            existing = db.query(User).filter(User.username == username).first()
+            if existing:
+                if not existing.password_hash:
+                    existing.password_hash = hash_password(password)
+                if role == "admin":
+                    existing.role = "admin"
+                    existing.enabled = True
+                db.add(existing)
+                continue
+            db.add(
+                User(
+                    username=username,
+                    password_hash=hash_password(password),
+                    role=role,
+                    enabled=True,
+                )
+            )
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_session_user(request: Request, db: Session) -> Optional[User]:
+    token = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
+    if not token:
+        return None
+    session = db.query(UserSession).filter(UserSession.token == token).first()
+    if not session:
+        return None
+    if session.expires_at <= datetime.utcnow():
+        db.delete(session)
+        db.commit()
+        return None
+    user = db.query(User).filter(User.id == session.user_id).first()
+    if not user or not user.enabled:
+        return None
+    return user
+
+
+def require_user(request: Request, db: Session = Depends(get_db)) -> User:
+    user = get_session_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return user
+
+
+def require_admin(user: User = Depends(require_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="当前账号没有管理权限")
+    return user
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    ensure_default_users_seeded()
     ensure_uploaded_source_seeded()
     if AUTO_SEED_DEMO_SOURCE:
         ensure_demo_source_seeded()
@@ -675,8 +761,126 @@ async def app_meta() -> AppMetaRead:
     return AppMetaRead(title=APP_TITLE, version=APP_VERSION)
 
 
+@app.post("/api/auth/login", response_model=AuthResponse)
+async def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
+    username = payload.username.strip()
+    user = db.query(User).filter(User.username == username).first()
+    if not user or user.password_hash != hash_password(payload.password):
+        raise HTTPException(status_code=400, detail="用户名或密码错误")
+    if not user.enabled:
+        raise HTTPException(status_code=403, detail="当前账号已被停用")
+
+    token = uuid.uuid4().hex
+    expires_at = datetime.utcnow() + timedelta(days=SESSION_DURATION_DAYS)
+    db.query(UserSession).filter(UserSession.user_id == user.id).delete(synchronize_session=False)
+    db.add(UserSession(token=token, user_id=user.id, expires_at=expires_at))
+    db.commit()
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=SESSION_DURATION_DAYS * 24 * 60 * 60,
+    )
+    return AuthResponse(user=serialize_user(user))
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
+    token = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
+    if token:
+        db.query(UserSession).filter(UserSession.token == token).delete(synchronize_session=False)
+        db.commit()
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return {"message": "已退出登录"}
+
+
+@app.get("/api/auth/me", response_model=UserRead)
+async def auth_me(user: User = Depends(require_user)) -> UserRead:
+    return serialize_user(user)
+
+
+@app.get("/api/admin/users", response_model=list[UserRead])
+async def list_admin_users(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[UserRead]:
+    users = db.query(User).order_by(User.created_at.asc(), User.id.asc()).all()
+    return [serialize_user(user) for user in users]
+
+
+@app.post("/api/admin/users", response_model=UserRead)
+async def create_admin_user(
+    payload: AdminUserCreate,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> UserRead:
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+    if payload.role not in {"admin", "user"}:
+        raise HTTPException(status_code=400, detail="角色只能是 admin 或 user")
+    if len(payload.password) < 4:
+        raise HTTPException(status_code=400, detail="密码至少 4 位")
+    existing = db.query(User).filter(User.username == username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    user = User(
+        username=username,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        enabled=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return serialize_user(user)
+
+
+@app.patch("/api/admin/users/{user_id}", response_model=UserRead)
+async def update_admin_user(
+    user_id: int,
+    payload: AdminUserUpdate,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> UserRead:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if payload.role is not None:
+        if payload.role not in {"admin", "user"}:
+            raise HTTPException(status_code=400, detail="角色只能是 admin 或 user")
+        user.role = payload.role
+    if payload.enabled is not None:
+        if user.id == current_admin.id and not payload.enabled:
+            raise HTTPException(status_code=400, detail="不能停用当前管理员账号")
+        user.enabled = payload.enabled
+    if payload.password.strip():
+        if len(payload.password.strip()) < 4:
+            raise HTTPException(status_code=400, detail="密码至少 4 位")
+        user.password_hash = hash_password(payload.password.strip())
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return serialize_user(user)
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def delete_admin_user(
+    user_id: int,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.id == current_admin.id:
+        raise HTTPException(status_code=400, detail="不能删除当前管理员账号")
+    db.query(UserSession).filter(UserSession.user_id == user.id).delete(synchronize_session=False)
+    db.delete(user)
+    db.commit()
+    return {"message": "用户已删除"}
+
+
 @app.get("/api/dashboard/summary", response_model=DashboardSummaryRead)
-async def dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummaryRead:
+async def dashboard_summary(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> DashboardSummaryRead:
     source_count = db.query(func.count(BookSource.id)).scalar() or 0
     enabled_source_count = db.query(func.count(BookSource.id)).filter(BookSource.enabled.is_(True)).scalar() or 0
     shelf_count = db.query(func.count(ShelfBook.id)).scalar() or 0
@@ -697,13 +901,17 @@ async def dashboard_summary(db: Session = Depends(get_db)) -> DashboardSummaryRe
 
 
 @app.get("/api/sources", response_model=list[BookSourceRead])
-async def list_sources(db: Session = Depends(get_db)) -> list[BookSourceRead]:
+async def list_sources(_: User = Depends(require_user), db: Session = Depends(get_db)) -> list[BookSourceRead]:
     sources = db.query(BookSource).order_by(BookSource.created_at.desc()).all()
     return [serialize_source(source) for source in sources]
 
 
 @app.post("/api/sources/import", response_model=list[BookSourceRead])
-async def import_sources(request: Request, db: Session = Depends(get_db)) -> list[BookSourceRead]:
+async def import_sources(
+    request: Request,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[BookSourceRead]:
     try:
         payload: Any = await request.json()
     except JSONDecodeError as exc:
@@ -725,7 +933,10 @@ async def import_sources(request: Request, db: Session = Depends(get_db)) -> lis
 
 
 @app.post("/api/sources/private-site/test", response_model=PrivateSiteTestResponse)
-async def test_private_site_source(payload: PrivateSiteTestRequest) -> PrivateSiteTestResponse:
+async def test_private_site_source(
+    payload: PrivateSiteTestRequest,
+    _: User = Depends(require_admin),
+) -> PrivateSiteTestResponse:
     try:
         source_import = build_private_site_source_import(payload.site)
         source_config = source_import.model_dump()
@@ -759,6 +970,7 @@ async def test_private_site_source(payload: PrivateSiteTestRequest) -> PrivateSi
 @app.post("/api/sources/private-site/autodetect", response_model=PrivateSiteAutodetectResponse)
 async def autodetect_private_site_source(
     payload: PrivateSiteAutodetectRequest,
+    _: User = Depends(require_admin),
 ) -> PrivateSiteAutodetectResponse:
     try:
         return await autodetect_private_site(payload.url)
@@ -771,7 +983,10 @@ async def autodetect_private_site_source(
 
 
 @app.post("/api/sources/private-site/preview")
-async def preview_private_site_source(payload: PrivateSiteSourceRequest) -> dict[str, Any]:
+async def preview_private_site_source(
+    payload: PrivateSiteSourceRequest,
+    _: User = Depends(require_admin),
+) -> dict[str, Any]:
     try:
         source_import = build_private_site_source_import(payload)
     except ValidationError as exc:
@@ -784,6 +999,7 @@ async def preview_private_site_source(payload: PrivateSiteSourceRequest) -> dict
 @app.post("/api/sources/private-site", response_model=BookSourceRead)
 async def import_private_site_source(
     payload: PrivateSiteSourceRequest,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> BookSourceRead:
     try:
@@ -802,6 +1018,7 @@ async def import_private_site_source(
 async def update_source(
     source_id: int,
     payload: BookSourceUpdate,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> BookSourceRead:
     source = get_source_or_404(source_id, db)
@@ -816,7 +1033,11 @@ async def update_source(
 
 
 @app.delete("/api/sources/{source_id}")
-async def delete_source(source_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
+async def delete_source(
+    source_id: int,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
     source = get_source_or_404(source_id, db)
     if source.name in PROTECTED_SOURCE_NAMES:
         raise HTTPException(status_code=400, detail="系统内置书源不支持删除")
@@ -828,6 +1049,7 @@ async def delete_source(source_id: int, db: Session = Depends(get_db)) -> dict[s
 @app.post("/api/sources/bulk-delete")
 async def bulk_delete_sources(
     payload: SourceBulkDeleteRequest,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     if payload.delete_all:
@@ -862,7 +1084,7 @@ async def bulk_delete_sources(
 
 
 @app.get("/api/library/books", response_model=list[ShelfBookRead])
-async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]:
+async def list_shelf_books(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[ShelfBookRead]:
     books = (
         db.query(ShelfBook)
         .order_by(ShelfBook.last_read_at.is_(None), ShelfBook.last_read_at.desc(), ShelfBook.added_at.desc())
@@ -877,7 +1099,7 @@ async def list_shelf_books(db: Session = Depends(get_db)) -> list[ShelfBookRead]
 
 
 @app.get("/api/library/uploads")
-async def upload_books_api_info(request: Request) -> Any:
+async def upload_books_api_info(request: Request, _: User = Depends(require_admin)) -> Any:
     base_url = str(request.base_url).rstrip("/")
     payload = {
         "message": "这个地址用于局域网书籍上传。浏览器直接打开会看到上传网页，程序调用时请继续使用 POST multipart/form-data。",
@@ -1459,6 +1681,7 @@ async def upload_books_to_shelf(
     category: str = Form(""),
     tags: str = Form(""),
     import_channel: str = Form(""),
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> UploadedBookImportResponse:
     if not files:
@@ -1507,7 +1730,7 @@ async def upload_books_to_shelf(
 
 
 @app.get("/api/library/backup")
-async def export_backup(db: Session = Depends(get_db)) -> dict[str, Any]:
+async def export_backup(_: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
     sources = db.query(BookSource).order_by(BookSource.created_at.asc()).all()
     shelf_books = db.query(ShelfBook).order_by(ShelfBook.added_at.asc()).all()
     cached_chapters = db.query(CachedChapter).order_by(CachedChapter.cached_at.asc()).all()
@@ -1555,6 +1778,7 @@ async def export_backup(db: Session = Depends(get_db)) -> dict[str, Any]:
 @app.post("/api/library/restore", response_model=BackupRestoreResponse)
 async def restore_backup(
     payload: BackupRestoreRequest,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> BackupRestoreResponse:
     mode = payload.mode.strip().lower() or "merge"
@@ -1685,7 +1909,11 @@ async def restore_backup(
 
 
 @app.post("/api/library/books", response_model=ShelfBookRead)
-async def add_shelf_book(payload: ShelfBookCreate, db: Session = Depends(get_db)) -> ShelfBookRead:
+async def add_shelf_book(
+    payload: ShelfBookCreate,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ShelfBookRead:
     source = get_source_or_404(payload.source_id, db)
     shelf_book = upsert_shelf_book(db, source_id=source.id, source_name=source.name, book=payload.book)
     cached_count = (
@@ -1703,6 +1931,7 @@ async def add_shelf_book(payload: ShelfBookCreate, db: Session = Depends(get_db)
 async def update_shelf_book(
     book_key: str,
     payload: ShelfBookUpdate,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ShelfBookRead:
     shelf_book = get_shelf_book_or_404(book_key, db)
@@ -1722,7 +1951,11 @@ async def update_shelf_book(
 
 
 @app.delete("/api/library/books/{book_key}")
-async def delete_shelf_book(book_key: str, db: Session = Depends(get_db)) -> dict[str, str]:
+async def delete_shelf_book(
+    book_key: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
     shelf_book = get_shelf_book_or_404(book_key, db)
     db.query(CachedChapter).filter(CachedChapter.book_key == book_key).delete(synchronize_session=False)
     db.query(PrefetchTask).filter(PrefetchTask.book_key == book_key).delete(synchronize_session=False)
@@ -1732,7 +1965,11 @@ async def delete_shelf_book(book_key: str, db: Session = Depends(get_db)) -> dic
 
 
 @app.get("/api/library/books/{book_key}/cached-chapters", response_model=list[CachedChapterRead])
-async def list_cached_chapters(book_key: str, db: Session = Depends(get_db)) -> list[CachedChapterRead]:
+async def list_cached_chapters(
+    book_key: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[CachedChapterRead]:
     chapters = (
         db.query(CachedChapter)
         .filter(CachedChapter.book_key == book_key)
@@ -1743,13 +1980,21 @@ async def list_cached_chapters(book_key: str, db: Session = Depends(get_db)) -> 
 
 
 @app.get("/api/prefetch-tasks/{task_id}", response_model=PrefetchTaskRead)
-async def get_prefetch_task(task_id: str, db: Session = Depends(get_db)) -> PrefetchTaskRead:
+async def get_prefetch_task(
+    task_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PrefetchTaskRead:
     task = get_prefetch_task_or_404(task_id, db)
     return serialize_prefetch_task(task)
 
 
 @app.get("/api/library/books/{book_key}/prefetch-tasks/latest", response_model=Optional[PrefetchTaskRead])
-async def get_latest_prefetch_task(book_key: str, db: Session = Depends(get_db)) -> Optional[PrefetchTaskRead]:
+async def get_latest_prefetch_task(
+    book_key: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> Optional[PrefetchTaskRead]:
     task = (
         db.query(PrefetchTask)
         .filter(PrefetchTask.book_key == book_key)
@@ -1762,7 +2007,11 @@ async def get_latest_prefetch_task(book_key: str, db: Session = Depends(get_db))
 
 
 @app.delete("/api/library/books/{book_key}/cached-chapters")
-async def clear_cached_chapters(book_key: str, db: Session = Depends(get_db)) -> dict[str, str]:
+async def clear_cached_chapters(
+    book_key: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
     db.query(CachedChapter).filter(CachedChapter.book_key == book_key).delete(synchronize_session=False)
     db.commit()
     return {"message": "已清空本书缓存"}
@@ -1772,6 +2021,7 @@ async def clear_cached_chapters(book_key: str, db: Session = Depends(get_db)) ->
 async def create_prefetch_job(
     book_key: str,
     payload: ChapterCacheRequest,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> PrefetchTaskRead:
     source = get_source_or_404(payload.source_id, db)
@@ -1816,6 +2066,7 @@ async def create_prefetch_job(
 async def prefetch_book_chapters(
     book_key: str,
     payload: ChapterCacheRequest,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ChapterPrefetchResponse:
     source = get_source_or_404(payload.source_id, db)
@@ -1865,6 +2116,7 @@ async def prefetch_book_chapters(
 async def update_reading_progress(
     book_key: str,
     payload: ReadingProgressUpdate,
+    _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ShelfBookRead:
     source = get_source_or_404(payload.source_id, db)
@@ -1890,7 +2142,7 @@ async def update_reading_progress(
 
 
 @app.get("/api/reader/preferences", response_model=ReaderPreferenceRead)
-async def get_reader_preferences(db: Session = Depends(get_db)) -> ReaderPreferenceRead:
+async def get_reader_preferences(_: User = Depends(require_user), db: Session = Depends(get_db)) -> ReaderPreferenceRead:
     preference = get_or_create_preferences(db)
     return serialize_preferences(preference)
 
@@ -1898,6 +2150,7 @@ async def get_reader_preferences(db: Session = Depends(get_db)) -> ReaderPrefere
 @app.put("/api/reader/preferences", response_model=ReaderPreferenceRead)
 async def update_reader_preferences(
     payload: ReaderPreferenceUpdate,
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ReaderPreferenceRead:
     preference = get_or_create_preferences(db)
@@ -1912,7 +2165,11 @@ async def update_reader_preferences(
 
 
 @app.post("/api/search", response_model=SearchResponse)
-async def search_books(payload: SearchRequest, db: Session = Depends(get_db)) -> SearchResponse:
+async def search_books(
+    payload: SearchRequest,
+    _: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> SearchResponse:
     keyword = payload.keyword.strip()
     if not keyword:
         raise HTTPException(status_code=400, detail="请输入搜索关键词")
@@ -1970,7 +2227,11 @@ async def search_books(payload: SearchRequest, db: Session = Depends(get_db)) ->
 
 
 @app.post("/api/books/open", response_model=BookOpenResponse)
-async def open_book(payload: BookOpenRequest, db: Session = Depends(get_db)) -> BookOpenResponse:
+async def open_book(
+    payload: BookOpenRequest,
+    _: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> BookOpenResponse:
     source = get_source_or_404(payload.source_id, db)
     source_config = loads_config(source.config_json)
 
@@ -2058,6 +2319,7 @@ async def open_book(payload: BookOpenRequest, db: Session = Depends(get_db)) -> 
 @app.post("/api/books/content", response_model=ChapterContentResponse)
 async def read_chapter(
     payload: ChapterContentRequest,
+    _: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ChapterContentResponse:
     source = get_source_or_404(payload.source_id, db)
