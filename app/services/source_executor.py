@@ -301,6 +301,8 @@ def build_private_site_source_import(site: PrivateSiteSourceRequest) -> BookSour
             "chapterName": site.toc_title.strip(),
             "chapterUrl": site.toc_url.strip(),
         }
+        if site.toc_next_url.strip():
+            raw_config["ruleToc"]["nextTocUrl"] = site.toc_next_url.strip()
 
     if site.content_body.strip():
         raw_config["ruleContent"] = {

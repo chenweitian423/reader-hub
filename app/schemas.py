@@ -74,6 +74,7 @@ class PrivateSiteSourceRequest(BaseModel):
     toc_list: str = ""
     toc_title: str = ""
     toc_url: str = ""
+    toc_next_url: str = ""
     content_body: str = ""
     content_next_url: str = ""
 

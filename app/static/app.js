@@ -59,6 +59,153 @@ let prefetchPollTimer = null;
 let previousWindowScrollY = 0;
 const RECENT_SEARCH_STORAGE_KEY = "reader-hub-recent-searches";
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["txt", "md", "epub"]);
+const PRIVATE_SITE_PRESETS = {
+  html_pc: {
+    label: "PC HTML 列表站",
+    values: {
+      name: "PC HTML 书站示例",
+      description: "常见 PC 端 HTML 搜索 + 详情 + 目录站点",
+      base_url: "https://books.example.com",
+      headers: { "User-Agent": "ReaderHub Private Connector/1.0" },
+      search_url: "https://books.example.com/search?keyword={keyword}",
+      search_list: ".search-list .book-item",
+      search_title: ".book-title@text",
+      search_author: ".book-author@text",
+      search_cover: "img@src",
+      search_intro: ".book-intro@text",
+      search_detail_url: ".book-title@href",
+      search_latest_chapter: ".book-latest@text",
+      detail_title: ".book-header h1@text",
+      detail_author: ".book-meta .author@text",
+      detail_cover: ".book-cover img@src",
+      detail_intro: "#bookIntro@text",
+      detail_status: ".book-status@text",
+      toc_list: ".chapter-list li",
+      toc_title: "a@text",
+      toc_url: "a@href",
+      toc_next_url: "",
+      content_body: "#content@html",
+      content_next_url: "",
+      test_keyword: "凡人修仙",
+    },
+  },
+  mobile_paged: {
+    label: "移动站多页正文",
+    values: {
+      name: "移动站多页正文示例",
+      description: "适合目录页正常、正文需要翻页拼接的移动站",
+      base_url: "https://m.books.example.com",
+      headers: { "User-Agent": "Mozilla/5.0 ReaderHub Mobile" },
+      search_url: "https://m.books.example.com/search?keyword={keyword}",
+      search_list: ".search-item",
+      search_title: ".book-title@text",
+      search_author: ".book-author@text",
+      search_cover: ".book-cover img@src",
+      search_intro: ".book-desc@text",
+      search_detail_url: "a@href",
+      search_latest_chapter: ".book-update@text",
+      detail_title: ".book-info h1@text",
+      detail_author: ".book-meta .author@text",
+      detail_cover: ".book-cover img@src",
+      detail_intro: ".book-intro@text",
+      detail_status: ".book-status@text",
+      toc_list: ".chapter-list li",
+      toc_title: "a@text",
+      toc_url: "a@href",
+      toc_next_url: ".pagination .next@href",
+      content_body: "#nr1@html",
+      content_next_url: ".page-next@href",
+      test_keyword: "斗破苍穹",
+    },
+  },
+  json_api: {
+    label: "JSON API 站",
+    values: {
+      name: "JSON API 书站示例",
+      description: "搜索、目录和正文都直接走 JSON 接口",
+      base_url: "https://api.books.example.com",
+      headers: { Authorization: "Bearer your-token" },
+      search_url: "https://api.books.example.com/search?keyword={keyword}",
+      search_list: "data.list",
+      search_title: "title",
+      search_author: "author",
+      search_cover: "cover",
+      search_intro: "intro",
+      search_detail_url: "detailUrl",
+      search_latest_chapter: "latestChapter",
+      detail_title: "data.book.title",
+      detail_author: "data.book.author",
+      detail_cover: "data.book.cover",
+      detail_intro: "data.book.intro",
+      detail_status: "data.book.status",
+      toc_list: "data.chapters",
+      toc_title: "title",
+      toc_url: "url",
+      toc_next_url: "data.nextPageUrl",
+      content_body: "data.content",
+      content_next_url: "data.nextPageUrl",
+      test_keyword: "雪中悍刀行",
+    },
+  },
+  json_search_html_read: {
+    label: "JSON 搜索 + HTML 阅读",
+    values: {
+      name: "JSON 搜索 + HTML 阅读示例",
+      description: "搜索接口是 JSON，详情页、目录页、正文页还是 HTML",
+      base_url: "https://books.example.com",
+      headers: { "User-Agent": "ReaderHub Hybrid Connector/1.0" },
+      search_url: "https://books.example.com/api/search?keyword={keyword}",
+      search_list: "data.items",
+      search_title: "title",
+      search_author: "author",
+      search_cover: "cover",
+      search_intro: "intro",
+      search_detail_url: "detailUrl",
+      search_latest_chapter: "latestChapter",
+      detail_title: ".book-header h1@text",
+      detail_author: ".book-meta .author@text",
+      detail_cover: ".book-cover img@src",
+      detail_intro: "#intro@text",
+      detail_status: ".status@text",
+      toc_list: ".chapter-list li",
+      toc_title: "a@text",
+      toc_url: "a@href",
+      toc_next_url: "",
+      content_body: "#content@html",
+      content_next_url: ".next-page@href",
+      test_keyword: "庆余年",
+    },
+  },
+  xpath_site: {
+    label: "XPath 站点",
+    values: {
+      name: "XPath 书站示例",
+      description: "适合结构稳定、XPath 更容易命中的老站点",
+      base_url: "https://novel.example.com",
+      headers: { "User-Agent": "ReaderHub XPath Connector/1.0" },
+      search_url: "https://novel.example.com/search?keyword={keyword}",
+      search_list: "//div[contains(@class,'book-item')]",
+      search_title: ".//h3/a/text()",
+      search_author: ".//p[contains(@class,'author')]/text()",
+      search_cover: ".//img/@src",
+      search_intro: ".//p[contains(@class,'intro')]/text()",
+      search_detail_url: ".//h3/a/@href",
+      search_latest_chapter: ".//p[contains(@class,'latest')]/text()",
+      detail_title: "//div[@class='book-header']/h1/text()",
+      detail_author: "//span[@class='author']/text()",
+      detail_cover: "//div[@class='cover']//img/@src",
+      detail_intro: "//div[@id='intro']",
+      detail_status: "//span[@class='status']/text()",
+      toc_list: "//ul[@class='chapter-list']/li",
+      toc_title: ".//a/text()",
+      toc_url: ".//a/@href",
+      toc_next_url: "//a[contains(@class,'next')]/@href",
+      content_body: "//div[@id='content']",
+      content_next_url: "//a[contains(@class,'next-page')]/@href",
+      test_keyword: "诛仙",
+    },
+  },
+};
 
 const elements = {
   sourceJson: document.querySelector("#source-json"),
@@ -77,9 +224,15 @@ const elements = {
   privateSiteSearchIntro: document.querySelector("#private-site-search-intro"),
   privateSiteSearchDetailUrl: document.querySelector("#private-site-search-detail-url"),
   privateSiteSearchLatest: document.querySelector("#private-site-search-latest"),
+  privateSiteDetailTitle: document.querySelector("#private-site-detail-title"),
+  privateSiteDetailAuthor: document.querySelector("#private-site-detail-author"),
+  privateSiteDetailCover: document.querySelector("#private-site-detail-cover"),
+  privateSiteDetailIntro: document.querySelector("#private-site-detail-intro"),
+  privateSiteDetailStatus: document.querySelector("#private-site-detail-status"),
   privateSiteTocList: document.querySelector("#private-site-toc-list"),
   privateSiteTocTitle: document.querySelector("#private-site-toc-title"),
   privateSiteTocUrl: document.querySelector("#private-site-toc-url"),
+  privateSiteTocNext: document.querySelector("#private-site-toc-next"),
   privateSiteContentBody: document.querySelector("#private-site-content-body"),
   privateSiteContentNext: document.querySelector("#private-site-content-next"),
   privateSiteTestKeyword: document.querySelector("#private-site-test-keyword"),
@@ -88,6 +241,7 @@ const elements = {
   privateSiteImportBtn: document.querySelector("#private-site-import-btn"),
   privateSiteGenerateBtn: document.querySelector("#private-site-generate-btn"),
   privateSitePreview: document.querySelector("#private-site-preview"),
+  privateSitePresetButtons: Array.from(document.querySelectorAll("[data-private-site-preset]")),
   sourceList: document.querySelector("#source-list"),
   sourceCount: document.querySelector("#source-count"),
   shelfList: document.querySelector("#shelf-list"),
@@ -1897,33 +2051,41 @@ async function loadSampleJson() {
 }
 
 function loadPrivateSiteSample() {
-  elements.privateSiteName.value = "私有站点示例";
-  elements.privateSiteDescription.value = "示例规则，适合从常见 HTML 搜索页开始接入";
-  elements.privateSiteBaseUrl.value = "https://books.example.com";
-  elements.privateSiteHeaders.value = JSON.stringify(
-    {
-      "User-Agent": "ReaderHub Private Connector/1.0",
-    },
-    null,
-    2,
-  );
-  elements.privateSiteSearchUrl.value = "https://books.example.com/search?keyword={keyword}";
-  elements.privateSiteSearchList.value = ".search-list .book-item";
-  elements.privateSiteSearchTitle.value = ".book-title@text";
-  elements.privateSiteSearchAuthor.value = ".book-author@text";
-  elements.privateSiteSearchCover.value = "img@src";
-  elements.privateSiteSearchIntro.value = ".book-intro@text";
-  elements.privateSiteSearchDetailUrl.value = ".book-title@href";
-  elements.privateSiteSearchLatest.value = ".book-latest@text";
-  elements.privateSiteTocList.value = ".chapter-list li";
-  elements.privateSiteTocTitle.value = "a@text";
-  elements.privateSiteTocUrl.value = "a@href";
-  elements.privateSiteContentBody.value = "#content@html";
-  elements.privateSiteContentNext.value = "";
-  elements.privateSiteTestKeyword.value = "凡人修仙";
+  applyPrivateSitePreset("html_pc");
+}
+
+function applyPrivateSitePreset(presetKey) {
+  const preset = PRIVATE_SITE_PRESETS[presetKey];
+  if (!preset) return;
+
+  const values = preset.values;
+  elements.privateSiteName.value = values.name || "";
+  elements.privateSiteDescription.value = values.description || "";
+  elements.privateSiteBaseUrl.value = values.base_url || "";
+  elements.privateSiteHeaders.value = JSON.stringify(values.headers || {}, null, 2);
+  elements.privateSiteSearchUrl.value = values.search_url || "";
+  elements.privateSiteSearchList.value = values.search_list || "";
+  elements.privateSiteSearchTitle.value = values.search_title || "";
+  elements.privateSiteSearchAuthor.value = values.search_author || "";
+  elements.privateSiteSearchCover.value = values.search_cover || "";
+  elements.privateSiteSearchIntro.value = values.search_intro || "";
+  elements.privateSiteSearchDetailUrl.value = values.search_detail_url || "";
+  elements.privateSiteSearchLatest.value = values.search_latest_chapter || "";
+  elements.privateSiteDetailTitle.value = values.detail_title || "";
+  elements.privateSiteDetailAuthor.value = values.detail_author || "";
+  elements.privateSiteDetailCover.value = values.detail_cover || "";
+  elements.privateSiteDetailIntro.value = values.detail_intro || "";
+  elements.privateSiteDetailStatus.value = values.detail_status || "";
+  elements.privateSiteTocList.value = values.toc_list || "";
+  elements.privateSiteTocTitle.value = values.toc_title || "";
+  elements.privateSiteTocUrl.value = values.toc_url || "";
+  elements.privateSiteTocNext.value = values.toc_next_url || "";
+  elements.privateSiteContentBody.value = values.content_body || "";
+  elements.privateSiteContentNext.value = values.content_next_url || "";
+  elements.privateSiteTestKeyword.value = values.test_keyword || "";
   elements.privateSitePreview.className = "private-site-preview empty";
   elements.privateSitePreview.textContent =
-    "示例规则已填好。你可以先点“测试搜索”，确认命中后再导入。";
+    `${preset.label} 模板已填好。你可以先点“测试搜索”，确认命中后再导入。`;
 }
 
 function parsePrivateSiteHeaders() {
@@ -1957,14 +2119,15 @@ function buildPrivateSitePayload() {
     search_intro: elements.privateSiteSearchIntro.value.trim(),
     search_detail_url: elements.privateSiteSearchDetailUrl.value.trim(),
     search_latest_chapter: elements.privateSiteSearchLatest.value.trim(),
-    detail_title: "",
-    detail_author: "",
-    detail_cover: "",
-    detail_intro: "",
-    detail_status: "",
+    detail_title: elements.privateSiteDetailTitle.value.trim(),
+    detail_author: elements.privateSiteDetailAuthor.value.trim(),
+    detail_cover: elements.privateSiteDetailCover.value.trim(),
+    detail_intro: elements.privateSiteDetailIntro.value.trim(),
+    detail_status: elements.privateSiteDetailStatus.value.trim(),
     toc_list: elements.privateSiteTocList.value.trim(),
     toc_title: elements.privateSiteTocTitle.value.trim(),
     toc_url: elements.privateSiteTocUrl.value.trim(),
+    toc_next_url: elements.privateSiteTocNext.value.trim(),
     content_body: elements.privateSiteContentBody.value.trim(),
     content_next_url: elements.privateSiteContentNext.value.trim(),
   };
@@ -1980,6 +2143,11 @@ function renderPrivateSitePreview(payload) {
   }
 
   const supportText = payload.supports_reading ? "支持目录与正文抓取" : "当前仅验证了搜索规则";
+  const flowTags = [
+    payload.source_payload?.legacy?.raw?.ruleBookInfo ? "详情元数据已配置" : "详情元数据未配置",
+    payload.source_payload?.legacy?.raw?.ruleToc?.nextTocUrl ? "目录支持翻页" : "目录单页",
+    payload.source_payload?.legacy?.raw?.ruleContent?.nextContentUrl ? "正文支持翻页" : "正文单页",
+  ];
   const itemsHtml = items
     .map(
       (item) => `
@@ -1997,6 +2165,9 @@ function renderPrivateSitePreview(payload) {
     <div class="private-site-preview-head">
       <span class="badge">命中 ${payload.count} 本</span>
       <span class="badge">${supportText}</span>
+    </div>
+    <div class="private-site-preview-tags">
+      ${flowTags.map((tag) => `<span class="badge">${tag}</span>`).join("")}
     </div>
     <div class="private-site-preview-list">${itemsHtml}</div>
   `;
@@ -2687,6 +2858,11 @@ loadRecentSearches();
 renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
 elements.privateSiteSampleBtn.addEventListener("click", loadPrivateSiteSample);
+elements.privateSitePresetButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    applyPrivateSitePreset(button.dataset.privateSitePreset);
+  });
+});
 elements.privateSiteTestBtn.addEventListener("click", testPrivateSite);
 elements.privateSiteImportBtn.addEventListener("click", importPrivateSite);
 elements.privateSiteGenerateBtn.addEventListener("click", generatePrivateSiteJson);

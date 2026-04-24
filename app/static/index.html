@@ -556,6 +556,14 @@
               </div>
               <button id="private-site-sample-btn" class="ghost-btn" type="button">填入示例</button>
             </div>
+            <div class="private-site-preset-bar">
+              <span class="muted">常见类型</span>
+              <button class="ghost-btn" type="button" data-private-site-preset="html_pc">PC HTML 列表站</button>
+              <button class="ghost-btn" type="button" data-private-site-preset="mobile_paged">移动站多页正文</button>
+              <button class="ghost-btn" type="button" data-private-site-preset="json_api">JSON API 站</button>
+              <button class="ghost-btn" type="button" data-private-site-preset="json_search_html_read">JSON 搜索 + HTML 阅读</button>
+              <button class="ghost-btn" type="button" data-private-site-preset="xpath_site">XPath 站点</button>
+            </div>
             <div class="meta-grid private-site-grid">
               <label class="setting-item">
                 <span>站点名称</span>
@@ -614,29 +622,82 @@
                 <input id="private-site-search-latest" type="text" placeholder=".latest@text" />
               </label>
             </div>
-            <div class="meta-grid private-site-grid">
-              <label class="setting-item">
-                <span>目录列表规则</span>
-                <input id="private-site-toc-list" type="text" placeholder=".chapter-list li" />
-              </label>
-              <label class="setting-item">
-                <span>章节标题规则</span>
-                <input id="private-site-toc-title" type="text" placeholder="a@text" />
-              </label>
-              <label class="setting-item">
-                <span>章节链接规则</span>
-                <input id="private-site-toc-url" type="text" placeholder="a@href" />
-              </label>
-              <label class="setting-item">
-                <span>正文规则</span>
-                <input id="private-site-content-body" type="text" placeholder="#content@html 或 $.data.content" />
-              </label>
-              <label class="setting-item">
-                <span>下一页正文规则</span>
-                <input id="private-site-content-next" type="text" placeholder="可选：.next@href" />
-              </label>
-            </div>
+            <details class="private-site-advanced">
+              <summary>高级规则设置</summary>
+              <div class="private-site-advanced-body">
+                <div class="meta-grid private-site-grid">
+                  <label class="setting-item">
+                    <span>详情页书名规则</span>
+                    <input id="private-site-detail-title" type="text" placeholder=".book-header h1@text 或 data.book.title" />
+                  </label>
+                  <label class="setting-item">
+                    <span>详情页作者规则</span>
+                    <input id="private-site-detail-author" type="text" placeholder=".book-meta .author@text" />
+                  </label>
+                  <label class="setting-item">
+                    <span>详情页封面规则</span>
+                    <input id="private-site-detail-cover" type="text" placeholder=".book-cover img@src" />
+                  </label>
+                  <label class="setting-item">
+                    <span>详情页简介规则</span>
+                    <input id="private-site-detail-intro" type="text" placeholder="#intro@text 或 data.book.intro" />
+                  </label>
+                  <label class="setting-item">
+                    <span>详情页状态规则</span>
+                    <input id="private-site-detail-status" type="text" placeholder=".status@text 或 data.book.status" />
+                  </label>
+                </div>
+                <div class="meta-grid private-site-grid">
+                  <label class="setting-item">
+                    <span>目录列表规则</span>
+                    <input id="private-site-toc-list" type="text" placeholder=".chapter-list li" />
+                  </label>
+                  <label class="setting-item">
+                    <span>章节标题规则</span>
+                    <input id="private-site-toc-title" type="text" placeholder="a@text" />
+                  </label>
+                  <label class="setting-item">
+                    <span>章节链接规则</span>
+                    <input id="private-site-toc-url" type="text" placeholder="a@href" />
+                  </label>
+                  <label class="setting-item">
+                    <span>目录下一页规则</span>
+                    <input id="private-site-toc-next" type="text" placeholder="可选：.pagination .next@href" />
+                  </label>
+                  <label class="setting-item">
+                    <span>正文规则</span>
+                    <input id="private-site-content-body" type="text" placeholder="#content@html 或 $.data.content" />
+                  </label>
+                  <label class="setting-item">
+                    <span>正文下一页规则</span>
+                    <input id="private-site-content-next" type="text" placeholder="可选：.page-next@href" />
+                  </label>
+                </div>
+              </div>
+            </details>
             <p class="hint">规则可写 JSON 路径、CSS 选择器或 XPath 表达式。搜索地址里用 <code>{keyword}</code> 作为关键词占位符。</p>
+            <div class="private-site-rule-guide">
+              <article class="private-site-rule-card">
+                <strong>CSS / HTML 站</strong>
+                <span>.book-list .item</span>
+                <span>.title@text / a@href / #content@html</span>
+              </article>
+              <article class="private-site-rule-card">
+                <strong>XPath 站</strong>
+                <span>//div[@class='book-item']</span>
+                <span>.//a/text() / .//a/@href / //div[@id='content']</span>
+              </article>
+              <article class="private-site-rule-card">
+                <strong>JSON API 站</strong>
+                <span>data.list / data.book / data.chapters</span>
+                <span>title / author / content</span>
+              </article>
+              <article class="private-site-rule-card">
+                <strong>常见属性写法</strong>
+                <span>@text 取文本，@html 取 HTML，@href / @src 取链接与图片</span>
+                <span>目录翻页常见：.next@href，正文翻页常见：.page-next@href</span>
+              </article>
+            </div>
             <div class="inline-actions">
               <button id="private-site-test-btn" class="ghost-btn" type="button">测试搜索</button>
               <button id="private-site-import-btn" type="button">导入私有站点</button>
