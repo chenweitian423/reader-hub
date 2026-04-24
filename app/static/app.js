@@ -16,6 +16,7 @@ const state = {
     readerSidebarCollapsed: false,
     readerDrawerOpen: false,
     readerToolbarHidden: false,
+    readerChapterListExpanded: false,
   },
   sources: [],
   sampleJson: null,
@@ -409,6 +410,7 @@ const elements = {
   readerBookIntro: document.querySelector("#reader-book-intro"),
   readerBookCover: document.querySelector("#reader-book-cover"),
   chapterCount: document.querySelector("#chapter-count"),
+  chapterListToggleBtn: document.querySelector("#chapter-list-toggle-btn"),
   chapterList: document.querySelector("#chapter-list"),
   readerDrawerList: document.querySelector("#reader-drawer-list"),
   readerChapterTitle: document.querySelector("#reader-chapter-title"),
@@ -972,6 +974,12 @@ function setReaderToolbarHidden(enabled) {
   elements.pageShell.classList.toggle("reader-toolbar-hidden", state.ui.readerToolbarHidden);
 }
 
+function setReaderChapterListExpanded(enabled) {
+  state.ui.readerChapterListExpanded = Boolean(enabled);
+  elements.chapterList.classList.toggle("collapsed", !state.ui.readerChapterListExpanded);
+  elements.chapterListToggleBtn.textContent = state.ui.readerChapterListExpanded ? "收起目录" : "展开目录";
+}
+
 function getScrollContainer() {
   return elements.workspace || window;
 }
@@ -1505,6 +1513,7 @@ function resetReader(message = "选择一本支持阅读的书后，就可以在
   setReaderDrawerOpen(false);
   setReaderToolbarHidden(false);
   setReaderFocusMode(false);
+  setReaderChapterListExpanded(false);
   elements.chapterCount.textContent = "0";
   elements.chapterList.className = "chapter-list empty";
   elements.chapterList.textContent = "打开支持阅读的书籍后，章节会显示在这里。";
@@ -2039,6 +2048,7 @@ function renderChapterListInto(target) {
 function renderChapterList() {
   renderChapterListInto(elements.chapterList);
   renderChapterListInto(elements.readerDrawerList);
+  setReaderChapterListExpanded(state.ui.readerChapterListExpanded);
 }
 
 function updateReaderNav() {
@@ -3120,6 +3130,9 @@ elements.readerDrawerOverlay.addEventListener("click", () => {
 elements.readerSidebarBtn.addEventListener("click", () => {
   setReaderSidebarCollapsed(!state.ui.readerSidebarCollapsed);
 });
+elements.chapterListToggleBtn.addEventListener("click", () => {
+  setReaderChapterListExpanded(!state.ui.readerChapterListExpanded);
+});
 elements.readerFocusBtn.addEventListener("click", () => {
   if (!state.reader.book) {
     setStatus("请先打开一本书再进入沉浸模式", "error");
@@ -3129,11 +3142,11 @@ elements.readerFocusBtn.addEventListener("click", () => {
 });
 elements.readerBackBtn.addEventListener("click", () => {
   setActivePage(state.ui.lastBrowsePage || "search");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  scrollReaderToTop();
 });
 elements.readerShelfBtn.addEventListener("click", () => {
   setActivePage("shelf");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  scrollReaderToTop();
 });
 elements.toggleShelfBtn.addEventListener("click", () => {
   const book = currentReaderBook();
@@ -3262,15 +3275,11 @@ getScrollContainer().addEventListener(
     const currentY = target === window ? window.scrollY : target.scrollTop;
     updateReaderScrollTopButton();
     if (state.ui.activePage !== "reader" || !state.reader.book || state.ui.readerDrawerOpen) {
+      setReaderToolbarHidden(false);
       previousWindowScrollY = currentY;
       return;
     }
-    const delta = currentY - previousWindowScrollY;
-    if (currentY < 120 || delta < -10) {
-      setReaderToolbarHidden(false);
-    } else if (delta > 12) {
-      setReaderToolbarHidden(true);
-    }
+    setReaderToolbarHidden(currentY > 88);
     previousWindowScrollY = currentY;
   },
   { passive: true },

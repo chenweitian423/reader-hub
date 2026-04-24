@@ -65,10 +65,31 @@ a {
   grid-template-columns: 1fr;
 }
 
-.page-shell.reader-toolbar-hidden .reader-toolbar {
-  transform: translateY(-28px);
-  opacity: 0;
-  pointer-events: none;
+.page-shell.reader-toolbar-hidden .reader-page-header {
+  padding: 8px 18px;
+  gap: 12px;
+  background: rgba(255, 251, 245, 0.48);
+  border-color: rgba(79, 60, 35, 0.05);
+  box-shadow: none;
+  backdrop-filter: blur(8px);
+}
+
+.page-shell.reader-toolbar-hidden .reader-page-copy {
+  gap: 2px;
+}
+
+.page-shell.reader-toolbar-hidden .reader-page-copy .eyebrow,
+.page-shell.reader-toolbar-hidden .reader-page-copy .muted {
+  display: none;
+}
+
+.page-shell.reader-toolbar-hidden .reader-page-copy h2 {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.page-shell.reader-toolbar-hidden .reader-page-actions button {
+  padding: 10px 14px;
 }
 
 .page-shell.reader-page-active .nav-rail {
@@ -1853,12 +1874,17 @@ button:disabled {
 
 .chapter-item {
   width: 100%;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
   justify-content: flex-start;
   padding: 14px 16px;
   border-radius: 16px;
   background: rgba(181, 82, 51, 0.08);
   color: var(--ink);
   text-align: left;
+  overflow: hidden;
 }
 
 .chapter-item.active {
@@ -1873,14 +1899,19 @@ button:disabled {
   opacity: 0.75;
 }
 
+.chapter-title {
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .reader-toolbar {
   display: flex;
   justify-content: space-between;
   gap: 20px;
   align-items: start;
   margin-bottom: 16px;
-  position: sticky;
-  top: 92px;
+  position: static;
   z-index: 12;
   padding: 18px 20px;
   border-radius: 22px;
@@ -2013,6 +2044,16 @@ button:disabled {
   backdrop-filter: blur(12px);
 }
 
+#chapter-list {
+  max-height: min(58vh, 680px);
+  overflow: auto;
+  transition: max-height 180ms ease, opacity 180ms ease;
+}
+
+#chapter-list.collapsed {
+  max-height: 340px;
+}
+
 .reader-scroll-top-btn:hover {
   transform: translateY(-1px);
   background: rgba(255, 247, 239, 0.98);
@@ -2092,10 +2133,6 @@ button:disabled {
     align-items: stretch;
   }
 
-  .reader-toolbar {
-    top: 104px;
-  }
-
   .page-shell.reader-page-active {
     width: min(100% - 20px, 100%);
   }
@@ -2164,10 +2201,6 @@ button:disabled {
 
   .reader-page-header {
     padding: 18px;
-  }
-
-  .reader-toolbar {
-    top: 96px;
   }
 
   .source-item,
