@@ -36,6 +36,17 @@ LEGACY_UNSUPPORTED_TOKENS = (
 )
 CHAPTER_TEXT_PATTERN = re.compile(r"(第.{1,12}[章回节卷]|楔子|序章|终章|番外)")
 SEARCH_PARAM_CANDIDATES = ("searchkey", "keyword", "key", "wd", "q", "query")
+BQG_API_MARKERS = {
+    "search": "/api/search?q=",
+    "book": "/api/book?id=",
+    "booklist": "/api/booklist?id=",
+    "chapter": "/api/chapter?id=",
+}
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/135.0.0.0 Safari/537.36"
+)
 
 
 def normalize_source_payload(payload: Any) -> list[BookSourceImport]:
@@ -258,6 +269,9 @@ def build_private_site_source_import(site: PrivateSiteSourceRequest) -> BookSour
     ):
         raise ValueError("如果要接入阅读能力，请把目录列表、章节标题和章节链接规则一起填完整")
 
+    if is_bqg_api_private_site(site):
+        return build_bqg_api_source_import(site)
+
     description = site.description.strip() or f"私有站点接入 · {site.base_url.strip()}"
     rule_search = {
         "bookList": site.search_list.strip(),
@@ -339,6 +353,114 @@ def build_private_site_source_import(site: PrivateSiteSourceRequest) -> BookSour
             "search_url": site.search_url.strip(),
             "rule_search": rule_search,
             "raw": raw_config,
+        },
+        "private_site": site.model_dump(),
+    }
+    return BookSourceImport.model_validate(payload)
+
+
+def is_bqg_api_private_site(site: PrivateSiteSourceRequest) -> bool:
+    search_url = site.search_url.strip().lower()
+    return (
+        "/api/search" in search_url
+        and site.search_list.strip() == "data"
+        and site.search_title.strip() in {"title", "name"}
+        and site.search_detail_url.strip() in {"id", "book_id"}
+        and site.toc_list.strip() == "list"
+        and site.toc_title.strip() in {"value", "title"}
+        and site.toc_url.strip() in {"_index", "index", "chapter_id"}
+        and site.content_body.strip() in {"txt", "content"}
+    )
+
+
+def build_bqg_api_source_import(site: PrivateSiteSourceRequest) -> BookSourceImport:
+    base_url = site.base_url.strip().rstrip("/")
+    description = site.description.strip() or f"私有站点接入 · {base_url}"
+    headers = site.headers or {}
+
+    search_fields: dict[str, str] = {
+        "title": site.search_title.strip(),
+    }
+    if site.search_author.strip():
+        search_fields["author"] = site.search_author.strip()
+    if site.search_intro.strip():
+        search_fields["intro"] = site.search_intro.strip()
+    if site.search_latest_chapter.strip():
+        search_fields["latest_chapter"] = site.search_latest_chapter.strip()
+    if site.search_detail_url.strip():
+        search_fields["book_id"] = site.search_detail_url.strip()
+        search_fields["detail_url"] = site.search_detail_url.strip()
+
+    search_transforms: dict[str, dict[str, str]] = {}
+    if "detail_url" in search_fields:
+        search_transforms["detail_url"] = {"prefix": f"{base_url}/#/book/"}
+
+    detail_fields: dict[str, str] = {
+        "title": site.detail_title.strip() or "title",
+        "author": site.detail_author.strip() or "author",
+        "intro": site.detail_intro.strip() or "intro",
+        "status": site.detail_status.strip() or "full",
+        "latest_chapter": "lastchapter",
+        "book_id": "id",
+    }
+
+    chapters_fields: dict[str, str] = {
+        "title": site.toc_title.strip() or "value",
+        "chapter_id": site.toc_url.strip() or "_index",
+    }
+
+    content_fields: dict[str, str] = {
+        "title": "chaptername",
+        "content": site.content_body.strip() or "txt",
+    }
+
+    payload = {
+        "name": site.name.strip(),
+        "description": description,
+        "enabled": site.enabled,
+        "search": {
+            "method": "GET",
+            "url": site.search_url.strip(),
+            "headers": headers,
+            "params": {},
+            "body": {},
+            "result_path": site.search_list.strip(),
+            "fields": search_fields,
+            "transforms": search_transforms,
+            "timeout_seconds": 10.0,
+        },
+        "detail": {
+            "method": "GET",
+            "url": f"{base_url}/api/book?id={{book_id}}",
+            "headers": headers,
+            "params": {},
+            "body": {},
+            "result_path": "",
+            "fields": detail_fields,
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+        "chapters": {
+            "method": "GET",
+            "url": f"{base_url}/api/booklist?id={{dirid}}",
+            "headers": headers,
+            "params": {},
+            "body": {},
+            "result_path": site.toc_list.strip(),
+            "fields": chapters_fields,
+            "transforms": {},
+            "timeout_seconds": 10.0,
+        },
+        "content": {
+            "method": "GET",
+            "url": f"{base_url}/api/chapter?id={{book_id}}&chapterid={{chapter_id}}",
+            "headers": headers,
+            "params": {},
+            "body": {},
+            "result_path": "",
+            "fields": content_fields,
+            "transforms": {},
+            "timeout_seconds": 10.0,
         },
         "private_site": site.model_dump(),
     }
@@ -613,6 +735,14 @@ async def autodetect_private_site(url: str) -> PrivateSiteAutodetectResponse:
         soup = BeautifulSoup(html_text, "lxml")
         parsed = urlparse(current_url)
         base_url = f"{parsed.scheme}://{parsed.netloc}"
+        api_site = await autodetect_bqg_api_private_site(
+            current_url=current_url,
+            base_url=base_url,
+            html_text=html_text,
+            client=client,
+        )
+        if api_site:
+            return api_site
         preset = choose_private_site_preset(current_url, content_type)
         preset_values = {
             "html_pc": {
@@ -745,6 +875,111 @@ async def autodetect_private_site(url: str) -> PrivateSiteAutodetectResponse:
         return PrivateSiteAutodetectResponse(site=site, detected_preset=preset, notes=notes)
 
 
+async def fetch_same_host_scripts(
+    *,
+    current_url: str,
+    soup: BeautifulSoup,
+    client: httpx.AsyncClient,
+) -> str:
+    script_texts: list[str] = []
+    current_host = urlparse(current_url).netloc.lower()
+    for script in soup.select("script[src]"):
+        src = str(script.get("src", "")).strip()
+        if not src:
+            continue
+        absolute_src = urljoin(current_url, src)
+        parsed = urlparse(absolute_src)
+        if parsed.netloc.lower() != current_host:
+            continue
+        try:
+            response = await client.get(absolute_src)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            continue
+        content_type = response.headers.get("content-type", "").lower()
+        if "javascript" not in content_type and not absolute_src.endswith(".js"):
+            continue
+        script_texts.append(response.text)
+        if len(script_texts) >= 3:
+            break
+    return "\n".join(script_texts)
+
+
+async def autodetect_bqg_api_private_site(
+    *,
+    current_url: str,
+    base_url: str,
+    html_text: str,
+    client: httpx.AsyncClient,
+) -> PrivateSiteAutodetectResponse | None:
+    soup = BeautifulSoup(html_text, "lxml")
+    script_blob = await fetch_same_host_scripts(current_url=current_url, soup=soup, client=client)
+    combined = f"{html_text}\n{script_blob}"
+    if not all(marker in combined for marker in BQG_API_MARKERS.values()):
+        return None
+
+    probe_url = f"{base_url}/api/search?q=%E5%87%A1%E4%BA%BA%E4%BF%AE%E4%BB%99"
+    try:
+        probe_response = await client.get(
+            probe_url,
+            headers={
+                "User-Agent": BROWSER_USER_AGENT,
+                "Accept": "*/*",
+                "Referer": f"{base_url}/",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        )
+        probe_response.raise_for_status()
+        probe_payload = probe_response.json()
+    except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+        return None
+
+    data = probe_payload.get("data")
+    if not isinstance(data, list):
+        return None
+
+    parsed = urlparse(current_url)
+    host_name = parsed.netloc.replace("www.", "")
+    site = PrivateSiteSourceRequest(
+        name=f"{host_name} 自动接入",
+        description=f"自动识别自 {current_url}",
+        enabled=True,
+        base_url=base_url,
+        headers={
+            "User-Agent": BROWSER_USER_AGENT,
+            "Accept": "*/*",
+            "Referer": f"{base_url}/",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        search_url=f"{base_url}/api/search?q={{keyword}}",
+        search_list="data",
+        search_title="title",
+        search_author="author",
+        search_cover="",
+        search_intro="intro",
+        search_detail_url="id",
+        search_latest_chapter="",
+        detail_title="title",
+        detail_author="author",
+        detail_cover="",
+        detail_intro="intro",
+        detail_status="full",
+        toc_list="list",
+        toc_title="value",
+        toc_url="_index",
+        toc_next_url="",
+        content_body="txt",
+        content_next_url="",
+    )
+    notes = [
+        "已识别为一类前端页面 + JSON API 的小说站。",
+        f"搜索接口已定位到：{base_url}/api/search?q={{keyword}}",
+        "详情、目录和正文将分别通过 /api/book、/api/booklist、/api/chapter 自动接入。",
+        "这类站点会把“详情链接规则”字段复用于书籍 ID 提取，因此这里自动填成了 `id`。",
+    ]
+    return PrivateSiteAutodetectResponse(site=site, detected_preset="bqg_api", notes=notes)
+
+
 async def perform_legacy_request(
     search_url: str,
     context: dict[str, str],
@@ -768,7 +1003,7 @@ async def perform_legacy_request(
             method=request_meta["method"],
             url=url,
             headers=headers,
-            params=params,
+            params=params or None,
             data=body if request_meta["method"] != "GET" and body else None,
         )
         response.raise_for_status()
@@ -1308,7 +1543,7 @@ async def perform_request(config: RequestConfig | dict[str, Any], context: dict[
             method=method,
             url=url,
             headers=headers,
-            params=params,
+            params=params or None,
             json=body if method != "GET" and body else None,
         )
         response.raise_for_status()
@@ -1387,11 +1622,26 @@ async def execute_mapping_request(
     mapped_items: list[dict[str, Any]] = []
 
     selected_items = raw_items if limit is None else raw_items[:limit]
-    for raw_item in selected_items:
+    for index, raw_item in enumerate(selected_items, start=1):
+        normalized_item = raw_item
         if not isinstance(raw_item, dict):
-            continue
-        mapped = map_fields(raw_item, fields, transforms)
-        mapped["raw"] = raw_item
+            normalized_item = {
+                "value": raw_item,
+                "title": raw_item,
+                "_index": index,
+                "index": index,
+                "chapter_id": index,
+            }
+        mapped = map_fields(normalized_item, fields, transforms)
+        if not isinstance(raw_item, dict):
+            raw_payload = {
+                "value": "" if raw_item is None else str(raw_item),
+                "_index": index,
+                "index": index,
+            }
+        else:
+            raw_payload = raw_item
+        mapped["raw"] = raw_payload
         mapped_items.append(mapped)
     return mapped_items
 

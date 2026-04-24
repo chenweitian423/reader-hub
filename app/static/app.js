@@ -2173,10 +2173,17 @@ function renderPrivateSitePreview(payload) {
   }
 
   const supportText = payload.supports_reading ? "支持目录与正文抓取" : "当前仅验证了搜索规则";
+  const sourcePayload = payload.source_payload || {};
+  const legacyRaw = sourcePayload?.legacy?.raw || {};
+  const hasDetailConfig = Boolean(sourcePayload?.detail || legacyRaw?.ruleBookInfo);
+  const hasTocNext =
+    Boolean(sourcePayload?.chapters?.transforms?.next_toc_url) || Boolean(legacyRaw?.ruleToc?.nextTocUrl);
+  const hasContentNext =
+    Boolean(sourcePayload?.content?.transforms?.next_content_url) || Boolean(legacyRaw?.ruleContent?.nextContentUrl);
   const flowTags = [
-    payload.source_payload?.legacy?.raw?.ruleBookInfo ? "详情元数据已配置" : "详情元数据未配置",
-    payload.source_payload?.legacy?.raw?.ruleToc?.nextTocUrl ? "目录支持翻页" : "目录单页",
-    payload.source_payload?.legacy?.raw?.ruleContent?.nextContentUrl ? "正文支持翻页" : "正文单页",
+    hasDetailConfig ? "详情元数据已配置" : "详情元数据未配置",
+    hasTocNext ? "目录支持翻页" : "目录单页",
+    hasContentNext ? "正文支持翻页" : "正文单页",
   ];
   const itemsHtml = items
     .map(
