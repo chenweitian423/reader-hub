@@ -466,8 +466,8 @@
                   </p>
                 </div>
                 <div class="shelf-upload-actions">
-                  <label class="upload-btn" for="shelf-upload-file">选择书籍文件</label>
-                  <label class="upload-btn upload-btn-secondary" for="shelf-upload-directory">选择整个目录</label>
+                  <button id="shelf-upload-files-trigger" class="upload-btn" type="button">选择书籍文件</button>
+                  <button id="shelf-upload-directory-trigger" class="upload-btn upload-btn-secondary" type="button">选择整个目录</button>
                   <button id="shelf-upload-clear-btn" class="ghost-btn" type="button">清空待上传</button>
                 </div>
               </div>
@@ -538,6 +538,22 @@
           <section class="card">
             <div class="section-head">
               <h2>已导入书源</h2>
+              <div class="source-toolbar">
+                <label class="source-page-size">
+                  <span>每页展示</span>
+                  <select id="source-page-size">
+                    <option value="8">8</option>
+                    <option value="12" selected>12</option>
+                    <option value="20">20</option>
+                    <option value="40">40</option>
+                  </select>
+                </label>
+                <div class="source-pagination">
+                  <button id="source-prev-page" class="ghost-btn" type="button">上一页</button>
+                  <span id="source-pagination-info" class="badge">0 / 0</span>
+                  <button id="source-next-page" class="ghost-btn" type="button">下一页</button>
+                </div>
+              </div>
             </div>
             <div id="source-list" class="source-list empty">
               暂无书源，请先导入。

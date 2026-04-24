@@ -9,6 +9,8 @@ const state = {
     selectedResultKey: null,
     recentSearches: [],
     pendingUploadFiles: [],
+    sourcePage: 1,
+    sourcePageSize: 12,
     readerFocusMode: false,
     readerSidebarCollapsed: false,
     readerDrawerOpen: false,
@@ -74,9 +76,15 @@ const elements = {
   shelfUploadTags: document.querySelector("#shelf-upload-tags"),
   shelfUploadDropzone: document.querySelector("#shelf-upload-dropzone"),
   shelfUploadSelection: document.querySelector("#shelf-upload-selection"),
+  shelfUploadFilesTrigger: document.querySelector("#shelf-upload-files-trigger"),
+  shelfUploadDirectoryTrigger: document.querySelector("#shelf-upload-directory-trigger"),
   shelfUploadClearBtn: document.querySelector("#shelf-upload-clear-btn"),
   shelfUploadBtn: document.querySelector("#shelf-upload-btn"),
   uploadApiEndpoint: document.querySelector("#upload-api-endpoint"),
+  sourcePageSize: document.querySelector("#source-page-size"),
+  sourcePrevPage: document.querySelector("#source-prev-page"),
+  sourceNextPage: document.querySelector("#source-next-page"),
+  sourcePaginationInfo: document.querySelector("#source-pagination-info"),
   searchForm: document.querySelector("#search-form"),
   pageShell: document.querySelector("#page-shell"),
   keywordInput: document.querySelector("#keyword-input"),
@@ -389,6 +397,73 @@ async function extractDroppedUploadFiles(dataTransfer) {
     return files.flat();
   }
   return Array.from(dataTransfer.files || []);
+}
+
+async function readDirectoryHandle(directoryHandle, pathPrefix = "") {
+  const files = [];
+  for await (const [name, handle] of directoryHandle.entries()) {
+    const nextPath = `${pathPrefix}${name}`;
+    if (handle.kind === "file") {
+      const file = await handle.getFile();
+      file.readerHubRelativePath = nextPath;
+      files.push(file);
+      continue;
+    }
+    if (handle.kind === "directory") {
+      const nested = await readDirectoryHandle(handle, `${nextPath}/`);
+      files.push(...nested);
+    }
+  }
+  return files;
+}
+
+async function openBrowserFilePicker() {
+  if (typeof window.showOpenFilePicker === "function") {
+    try {
+      const handles = await window.showOpenFilePicker({
+        multiple: true,
+        types: [
+          {
+            description: "书籍文件",
+            accept: {
+              "text/plain": [".txt", ".md"],
+              "application/epub+zip": [".epub"],
+            },
+          },
+        ],
+      });
+      const files = await Promise.all(
+        handles.map(async (handle) => {
+          const file = await handle.getFile();
+          file.readerHubRelativePath = file.name;
+          return file;
+        }),
+      );
+      mergePendingUploadFiles(files);
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        setStatus("浏览器文件选择失败，请重试", "error");
+      }
+    }
+    return;
+  }
+  elements.shelfUploadFile.click();
+}
+
+async function openBrowserDirectoryPicker() {
+  if (typeof window.showDirectoryPicker === "function") {
+    try {
+      const handle = await window.showDirectoryPicker();
+      const files = await readDirectoryHandle(handle);
+      mergePendingUploadFiles(files);
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        setStatus("浏览器目录选择失败，请重试", "error");
+      }
+    }
+    return;
+  }
+  elements.shelfUploadDirectory.click();
 }
 
 function loadRecentSearches() {
@@ -1074,18 +1149,30 @@ function renderSourceFilterOptions() {
 
 function renderSources() {
   elements.sourceCount.textContent = String(state.sources.length);
+  elements.sourcePageSize.value = String(state.ui.sourcePageSize);
   renderSourceFilterOptions();
 
   if (!state.sources.length) {
+    elements.sourcePaginationInfo.textContent = "0 / 0";
+    elements.sourcePrevPage.disabled = true;
+    elements.sourceNextPage.disabled = true;
     elements.sourceList.className = "source-list empty";
     elements.sourceList.textContent = "暂无书源，请先导入。";
     return;
   }
 
+  const totalPages = Math.max(1, Math.ceil(state.sources.length / state.ui.sourcePageSize));
+  state.ui.sourcePage = Math.min(state.ui.sourcePage, totalPages);
+  const startIndex = (state.ui.sourcePage - 1) * state.ui.sourcePageSize;
+  const pageItems = state.sources.slice(startIndex, startIndex + state.ui.sourcePageSize);
+  elements.sourcePaginationInfo.textContent = `${state.ui.sourcePage} / ${totalPages}`;
+  elements.sourcePrevPage.disabled = state.ui.sourcePage <= 1;
+  elements.sourceNextPage.disabled = state.ui.sourcePage >= totalPages;
+
   elements.sourceList.className = "source-list";
   elements.sourceList.innerHTML = "";
 
-  state.sources.forEach((source) => {
+  pageItems.forEach((source, index) => {
     const fragment = elements.sourceItemTemplate.content.cloneNode(true);
     const name = fragment.querySelector(".source-name");
     const description = fragment.querySelector(".source-description");
@@ -1099,7 +1186,7 @@ function renderSources() {
     }
     summaryParts.push(sourceSupportsReadingConfig(config) ? "支持阅读" : "仅搜索");
 
-    name.textContent = source.name;
+    name.textContent = `${String(startIndex + index + 1).padStart(2, "0")} · ${source.name}`;
     description.textContent = [source.description || "未填写说明", summaryParts.join(" · ")]
       .filter(Boolean)
       .join(" · ");
@@ -1557,6 +1644,8 @@ function resolveResumeChapterIndex(chapters, resumeChapter, resumeChapterIndex) 
 
 async function refreshSources() {
   state.sources = await apiFetch("/api/sources", { method: "GET", headers: {} });
+  const totalPages = Math.max(1, Math.ceil(state.sources.length / state.ui.sourcePageSize));
+  state.ui.sourcePage = Math.min(state.ui.sourcePage, totalPages);
   renderSources();
   renderResults();
   await refreshSummary();
@@ -2181,6 +2270,12 @@ loadRecentSearches();
 renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
 elements.shelfUploadBtn.addEventListener("click", uploadBooksToShelf);
+elements.shelfUploadFilesTrigger.addEventListener("click", () => {
+  openBrowserFilePicker();
+});
+elements.shelfUploadDirectoryTrigger.addEventListener("click", () => {
+  openBrowserDirectoryPicker();
+});
 elements.shelfUploadClearBtn.addEventListener("click", () => {
   clearPendingUploadFiles();
   setStatus("已清空待上传文件", "idle");
@@ -2269,13 +2364,13 @@ elements.shelfUploadDirectory.addEventListener("change", async (event) => {
   event.target.value = "";
 });
 elements.shelfUploadDropzone.addEventListener("click", (event) => {
-  if (event.target.closest("label, button")) return;
-  elements.shelfUploadFile.click();
+  if (event.target.closest("button")) return;
+  openBrowserFilePicker();
 });
 elements.shelfUploadDropzone.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
-  elements.shelfUploadFile.click();
+  openBrowserFilePicker();
 });
 ["dragenter", "dragover"].forEach((eventName) => {
   elements.shelfUploadDropzone.addEventListener(eventName, (event) => {
@@ -2296,6 +2391,33 @@ elements.shelfUploadDropzone.addEventListener("drop", (event) => {
     handleShelfUploadDragState(false);
     setStatus(error.message || "拖动文件读取失败", "error");
   });
+});
+window.addEventListener("dragover", (event) => {
+  if (!event.dataTransfer?.types?.includes("Files")) return;
+  event.preventDefault();
+});
+window.addEventListener("drop", (event) => {
+  if (!event.dataTransfer?.types?.includes("Files")) return;
+  if (elements.shelfUploadDropzone.contains(event.target)) return;
+  event.preventDefault();
+  handleShelfUploadDragState(false);
+  setStatus("请把文件拖到书架页的上传区域里", "idle");
+});
+elements.sourcePageSize.addEventListener("change", () => {
+  state.ui.sourcePageSize = Number(elements.sourcePageSize.value) || 12;
+  state.ui.sourcePage = 1;
+  renderSources();
+});
+elements.sourcePrevPage.addEventListener("click", () => {
+  if (state.ui.sourcePage <= 1) return;
+  state.ui.sourcePage -= 1;
+  renderSources();
+});
+elements.sourceNextPage.addEventListener("click", () => {
+  const totalPages = Math.max(1, Math.ceil(state.sources.length / state.ui.sourcePageSize));
+  if (state.ui.sourcePage >= totalPages) return;
+  state.ui.sourcePage += 1;
+  renderSources();
 });
 elements.sourceFile.addEventListener("change", async (event) => {
   const [file] = event.target.files || [];
