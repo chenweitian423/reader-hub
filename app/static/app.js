@@ -2072,10 +2072,16 @@ function renderChapterList() {
 
 function updateReaderNav() {
   const { activeChapterIndex, chapters } = state.reader;
-  elements.prevChapterBtn.disabled = activeChapterIndex <= 0;
-  elements.nextChapterBtn.disabled = activeChapterIndex < 0 || activeChapterIndex >= chapters.length - 1;
-  elements.readerBottomPrevBtn.disabled = elements.prevChapterBtn.disabled;
-  elements.readerBottomNextBtn.disabled = elements.nextChapterBtn.disabled;
+  const prevDisabled = activeChapterIndex <= 0;
+  const nextDisabled = activeChapterIndex < 0 || activeChapterIndex >= chapters.length - 1;
+  if (elements.prevChapterBtn) {
+    elements.prevChapterBtn.disabled = prevDisabled;
+  }
+  if (elements.nextChapterBtn) {
+    elements.nextChapterBtn.disabled = nextDisabled;
+  }
+  elements.readerBottomPrevBtn.disabled = prevDisabled;
+  elements.readerBottomNextBtn.disabled = nextDisabled;
   updateReaderProgressUI();
 }
 
@@ -3116,12 +3122,12 @@ elements.loadSampleBtn.addEventListener("click", loadSampleJson);
 elements.backupExportBtn.addEventListener("click", exportBackup);
 elements.backupImportBtn.addEventListener("click", importBackup);
 elements.searchForm.addEventListener("submit", searchBooks);
-elements.prevChapterBtn.addEventListener("click", () => {
+elements.prevChapterBtn?.addEventListener("click", () => {
   if (state.reader.activeChapterIndex > 0) {
     readChapter(state.reader.activeChapterIndex - 1);
   }
 });
-elements.nextChapterBtn.addEventListener("click", () => {
+elements.nextChapterBtn?.addEventListener("click", () => {
   if (state.reader.activeChapterIndex < state.reader.chapters.length - 1) {
     readChapter(state.reader.activeChapterIndex + 1);
   }
