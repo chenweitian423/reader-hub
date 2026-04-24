@@ -35,6 +35,7 @@ LEGACY_UNSUPPORTED_TOKENS = (
     "@post:{",
 )
 CHAPTER_TEXT_PATTERN = re.compile(r"(第.{1,12}[章回节卷]|楔子|序章|终章|番外)")
+SEARCH_PARAM_CANDIDATES = ("searchkey", "keyword", "key", "wd", "q", "query")
 
 
 def normalize_source_payload(payload: Any) -> list[BookSourceImport]:
@@ -456,7 +457,56 @@ def choose_next_page_expression(soup: BeautifulSoup) -> str:
     return ""
 
 
-def autodetect_search_url(soup: BeautifulSoup, current_url: str, base_url: str) -> tuple[str, list[str]]:
+def build_search_candidate_from_url(raw_url: str) -> list[str]:
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in {"http", "https"}:
+        return []
+
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    candidates: list[str] = []
+    if query:
+        for key in list(query.keys()):
+            if key.lower() in SEARCH_PARAM_CANDIDATES:
+                updated = dict(query)
+                updated[key] = ["{keyword}"]
+                candidates.append(urlunparse(parsed._replace(query=urlencode(updated, doseq=True))))
+        return candidates
+
+    for key in SEARCH_PARAM_CANDIDATES:
+        updated = {key: ["{keyword}"]}
+        candidates.append(urlunparse(parsed._replace(query=urlencode(updated, doseq=True))))
+    return candidates
+
+
+async def probe_search_candidates(
+    client: httpx.AsyncClient,
+    candidates: list[str],
+    notes: list[str],
+) -> tuple[str, list[str]]:
+    seen: set[str] = set()
+    probe_keyword = "凡人修仙"
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        target = candidate.replace("{keyword}", probe_keyword)
+        try:
+            response = await client.get(target)
+            if response.status_code >= 400:
+                continue
+            notes.append(f"已探测到可访问的搜索入口：{candidate}")
+            return candidate, notes
+        except httpx.HTTPError:
+            continue
+    return "", notes
+
+
+async def autodetect_search_url(
+    soup: BeautifulSoup,
+    current_url: str,
+    base_url: str,
+    client: httpx.AsyncClient,
+) -> tuple[str, list[str]]:
     notes: list[str] = []
     query_hint = re.compile(r"(search|keyword|key|q|wd|query)", re.I)
     for form in soup.select("form"):
@@ -495,8 +545,41 @@ def autodetect_search_url(soup: BeautifulSoup, current_url: str, base_url: str) 
         notes.append("已从页面搜索表单自动识别 POST 搜索请求。")
         return f"{action},{options}", notes
 
-    guessed = f"{base_url.rstrip('/')}/search?keyword={{keyword}}"
-    notes.append("未直接识别到搜索表单，已按常见站点结构预填搜索地址，请测试后确认。")
+    search_like_links: list[str] = []
+    for link in soup.select("a[href]"):
+        href = str(link.get("href", "")).strip()
+        if not href:
+            continue
+        text = link.get_text(" ", strip=True)
+        absolute = urljoin(current_url, href)
+        if re.search(r"(search|search.php|search/index|modules/article/search|/s\.php|/search)", absolute, re.I):
+            search_like_links.append(absolute)
+            continue
+        if any(token in text for token in ("搜索", "搜书", "查书", "查询")):
+            search_like_links.append(absolute)
+
+    candidate_urls: list[str] = []
+    for link_url in search_like_links:
+        candidate_urls.extend(build_search_candidate_from_url(link_url))
+
+    candidate_urls.extend(
+        [
+            f"{base_url.rstrip('/')}/search?keyword={{keyword}}",
+            f"{base_url.rstrip('/')}/search.php?keyword={{keyword}}",
+            f"{base_url.rstrip('/')}/search.php?searchkey={{keyword}}",
+            f"{base_url.rstrip('/')}/modules/article/search.php?searchkey={{keyword}}",
+            f"{base_url.rstrip('/')}/modules/article/search.php?keyword={{keyword}}",
+            f"{base_url.rstrip('/')}/s.php?searchkey={{keyword}}",
+            f"{base_url.rstrip('/')}/s.php?keyword={{keyword}}",
+            f"{base_url.rstrip('/')}/e/search/index.php?searchkey={{keyword}}",
+        ]
+    )
+    matched, notes = await probe_search_candidates(client, candidate_urls, notes)
+    if matched:
+        return matched, notes
+
+    guessed = f"{base_url.rstrip('/')}/search.php?keyword={{keyword}}"
+    notes.append("未探测到明确可用的搜索入口，已预填常见搜索地址，请优先手动检查搜索链接规则。")
     return guessed, notes
 
 
@@ -527,140 +610,139 @@ async def autodetect_private_site(url: str) -> PrivateSiteAutodetectResponse:
         if "html" not in content_type.lower():
             raise ValueError("当前网址返回的不是标准 HTML 页面，暂时只支持常见网页小说站自动识别。")
         html_text = response.text
+        soup = BeautifulSoup(html_text, "lxml")
+        parsed = urlparse(current_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        preset = choose_private_site_preset(current_url, content_type)
+        preset_values = {
+            "html_pc": {
+                "search_list": ".search-list .book-item",
+                "search_title": ".book-title@text",
+                "search_author": ".book-author@text",
+                "search_cover": "img@src",
+                "search_intro": ".book-intro@text",
+                "search_detail_url": ".book-title@href",
+                "search_latest_chapter": ".book-latest@text",
+            },
+            "mobile_paged": {
+                "search_list": ".search-item",
+                "search_title": ".book-title@text",
+                "search_author": ".book-author@text",
+                "search_cover": ".book-cover img@src",
+                "search_intro": ".book-desc@text",
+                "search_detail_url": "a@href",
+                "search_latest_chapter": ".book-update@text",
+            },
+            "json_api": {
+                "search_list": "data.list",
+                "search_title": "title",
+                "search_author": "author",
+                "search_cover": "cover",
+                "search_intro": "intro",
+                "search_detail_url": "detailUrl",
+                "search_latest_chapter": "latestChapter",
+            },
+        }[preset]
 
-    soup = BeautifulSoup(html_text, "lxml")
-    parsed = urlparse(current_url)
-    base_url = f"{parsed.scheme}://{parsed.netloc}"
-    preset = choose_private_site_preset(current_url, content_type)
-    preset_values = {
-        "html_pc": {
-            "search_list": ".search-list .book-item",
-            "search_title": ".book-title@text",
-            "search_author": ".book-author@text",
-            "search_cover": "img@src",
-            "search_intro": ".book-intro@text",
-            "search_detail_url": ".book-title@href",
-            "search_latest_chapter": ".book-latest@text",
-        },
-        "mobile_paged": {
-            "search_list": ".search-item",
-            "search_title": ".book-title@text",
-            "search_author": ".book-author@text",
-            "search_cover": ".book-cover img@src",
-            "search_intro": ".book-desc@text",
-            "search_detail_url": "a@href",
-            "search_latest_chapter": ".book-update@text",
-        },
-        "json_api": {
-            "search_list": "data.list",
-            "search_title": "title",
-            "search_author": "author",
-            "search_cover": "cover",
-            "search_intro": "intro",
-            "search_detail_url": "detailUrl",
-            "search_latest_chapter": "latestChapter",
-        },
-    }[preset]
+        notes = [f"已按 `{preset}` 模板预填常见搜索规则。"]
+        search_url, search_notes = await autodetect_search_url(soup, current_url, base_url, client)
+        notes.extend(search_notes)
+        detail_title = choose_first_expression(
+            soup,
+            [
+                ".book-header h1@text",
+                ".book-info h1@text",
+                ".info h1@text",
+                "#info h1@text",
+                ".novel_info h1@text",
+                "h1@text",
+                "meta[property='og:novel:book_name']@content",
+                "meta[property='og:title']@content",
+            ],
+            min_length=2,
+        )
+        detail_author = choose_first_expression(
+            soup,
+            [
+                ".book-meta .author@text",
+                ".book-author@text",
+                ".author@text",
+                "meta[property='og:novel:author']@content",
+            ],
+            min_length=1,
+        )
+        detail_cover = choose_first_expression(
+            soup,
+            [
+                ".book-cover img@src",
+                ".cover img@src",
+                ".pic img@src",
+                "meta[property='og:image']@content",
+            ],
+        )
+        detail_intro = choose_first_expression(
+            soup,
+            [
+                "#bookIntro@text",
+                "#intro@text",
+                ".book-intro@text",
+                ".intro@text",
+                "meta[property='og:description']@content",
+            ],
+            min_length=20,
+        )
+        detail_status = choose_first_expression(
+            soup,
+            [
+                ".book-status@text",
+                ".status@text",
+                ".book-meta .status@text",
+            ],
+        )
+        toc_list, toc_title, toc_url = choose_best_toc_rule(soup)
+        toc_next_url = choose_next_page_expression(soup) if toc_list else ""
+        content_body = choose_best_content_expression(soup)
+        content_next_url = choose_next_page_expression(soup) if content_body else ""
 
-    notes = [f"已按 `{preset}` 模板预填常见搜索规则。"]
-    search_url, search_notes = autodetect_search_url(soup, current_url, base_url)
-    notes.extend(search_notes)
-    detail_title = choose_first_expression(
-        soup,
-        [
-            ".book-header h1@text",
-            ".book-info h1@text",
-            ".info h1@text",
-            "#info h1@text",
-            ".novel_info h1@text",
-            "h1@text",
-            "meta[property='og:novel:book_name']@content",
-            "meta[property='og:title']@content",
-        ],
-        min_length=2,
-    )
-    detail_author = choose_first_expression(
-        soup,
-        [
-            ".book-meta .author@text",
-            ".book-author@text",
-            ".author@text",
-            "meta[property='og:novel:author']@content",
-        ],
-        min_length=1,
-    )
-    detail_cover = choose_first_expression(
-        soup,
-        [
-            ".book-cover img@src",
-            ".cover img@src",
-            ".pic img@src",
-            "meta[property='og:image']@content",
-        ],
-    )
-    detail_intro = choose_first_expression(
-        soup,
-        [
-            "#bookIntro@text",
-            "#intro@text",
-            ".book-intro@text",
-            ".intro@text",
-            "meta[property='og:description']@content",
-        ],
-        min_length=20,
-    )
-    detail_status = choose_first_expression(
-        soup,
-        [
-            ".book-status@text",
-            ".status@text",
-            ".book-meta .status@text",
-        ],
-    )
-    toc_list, toc_title, toc_url = choose_best_toc_rule(soup)
-    toc_next_url = choose_next_page_expression(soup) if toc_list else ""
-    content_body = choose_best_content_expression(soup)
-    content_next_url = choose_next_page_expression(soup) if content_body else ""
+        if detail_title:
+            notes.append("已识别详情页书名规则。")
+        if toc_list:
+            notes.append("已识别目录列表规则。")
+        if content_body:
+            notes.append("已识别正文区域规则。")
+        if toc_next_url:
+            notes.append("已识别目录下一页规则。")
+        if content_next_url:
+            notes.append("已识别正文下一页规则。")
 
-    if detail_title:
-        notes.append("已识别详情页书名规则。")
-    if toc_list:
-        notes.append("已识别目录列表规则。")
-    if content_body:
-        notes.append("已识别正文区域规则。")
-    if toc_next_url:
-        notes.append("已识别目录下一页规则。")
-    if content_next_url:
-        notes.append("已识别正文下一页规则。")
-
-    host_name = parsed.netloc.replace("www.", "")
-    site = PrivateSiteSourceRequest(
-        name=f"{host_name} 自动接入",
-        description=f"自动识别自 {current_url}",
-        enabled=True,
-        base_url=base_url,
-        headers={"User-Agent": "ReaderHub AutoDetect/1.0"},
-        search_url=search_url,
-        search_list=preset_values["search_list"],
-        search_title=preset_values["search_title"],
-        search_author=preset_values["search_author"],
-        search_cover=preset_values["search_cover"],
-        search_intro=preset_values["search_intro"],
-        search_detail_url=preset_values["search_detail_url"],
-        search_latest_chapter=preset_values["search_latest_chapter"],
-        detail_title=detail_title,
-        detail_author=detail_author,
-        detail_cover=detail_cover,
-        detail_intro=detail_intro,
-        detail_status=detail_status,
-        toc_list=toc_list,
-        toc_title=toc_title,
-        toc_url=toc_url,
-        toc_next_url=toc_next_url,
-        content_body=content_body,
-        content_next_url=content_next_url,
-    )
-    return PrivateSiteAutodetectResponse(site=site, detected_preset=preset, notes=notes)
+        host_name = parsed.netloc.replace("www.", "")
+        site = PrivateSiteSourceRequest(
+            name=f"{host_name} 自动接入",
+            description=f"自动识别自 {current_url}",
+            enabled=True,
+            base_url=base_url,
+            headers={"User-Agent": "ReaderHub AutoDetect/1.0"},
+            search_url=search_url,
+            search_list=preset_values["search_list"],
+            search_title=preset_values["search_title"],
+            search_author=preset_values["search_author"],
+            search_cover=preset_values["search_cover"],
+            search_intro=preset_values["search_intro"],
+            search_detail_url=preset_values["search_detail_url"],
+            search_latest_chapter=preset_values["search_latest_chapter"],
+            detail_title=detail_title,
+            detail_author=detail_author,
+            detail_cover=detail_cover,
+            detail_intro=detail_intro,
+            detail_status=detail_status,
+            toc_list=toc_list,
+            toc_title=toc_title,
+            toc_url=toc_url,
+            toc_next_url=toc_next_url,
+            content_body=content_body,
+            content_next_url=content_next_url,
+        )
+        return PrivateSiteAutodetectResponse(site=site, detected_preset=preset, notes=notes)
 
 
 async def perform_legacy_request(
