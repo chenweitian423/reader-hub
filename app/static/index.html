@@ -274,16 +274,24 @@
 
         <section id="page-reader" class="page-panel hidden">
           <section class="reader-page-header">
+            <button id="reader-back-btn" class="ghost-btn" type="button">返回</button>
             <div class="reader-page-copy">
-              <p class="eyebrow">独立阅读页</p>
               <h2 id="reader-page-title">打开一本书，进入更大的阅读界面</h2>
               <p id="reader-page-meta" class="muted">
                 阅读器已经从搜书页拆出来，正文、目录和设置都会在这里独立展示。
               </p>
             </div>
             <div class="reader-page-actions">
-              <button id="reader-back-btn" class="ghost-btn" type="button">返回上一页</button>
-              <button id="reader-shelf-btn" class="ghost-btn" type="button">去书架</button>
+              <button id="reader-menu-btn" class="ghost-btn" type="button">更多</button>
+              <div id="reader-menu-panel" class="reader-menu-panel hidden">
+                <button id="reader-shelf-btn" class="ghost-btn" type="button">去书架</button>
+                <button id="reader-drawer-btn" class="ghost-btn" type="button">目录抽屉</button>
+                <button id="reader-sidebar-btn" class="ghost-btn" type="button">收起侧栏</button>
+                <button id="reader-focus-btn" class="ghost-btn" type="button">沉浸模式</button>
+                <button id="toggle-shelf-btn" class="ghost-btn" type="button">加入书架</button>
+                <button id="cache-book-btn" class="ghost-btn" type="button">缓存本书</button>
+                <button id="clear-cache-btn" class="ghost-btn" type="button">清空缓存</button>
+              </div>
             </div>
           </section>
 
@@ -369,18 +377,11 @@
               <div class="reader-main">
                 <div class="reader-toolbar">
                   <div>
-                    <p class="eyebrow">正文阅读</p>
+                    <p class="eyebrow">当前章节</p>
                     <h2 id="reader-chapter-title">请选择章节</h2>
                   </div>
-                  <div class="reader-nav">
-                    <button id="reader-drawer-btn" class="ghost-btn" type="button">目录抽屉</button>
-                    <button id="reader-sidebar-btn" class="ghost-btn" type="button">收起侧栏</button>
-                    <button id="reader-focus-btn" class="ghost-btn" type="button">沉浸模式</button>
-                    <button id="toggle-shelf-btn" class="ghost-btn" type="button">加入书架</button>
-                    <button id="cache-book-btn" class="ghost-btn" type="button">缓存本书</button>
-                    <button id="clear-cache-btn" class="ghost-btn" type="button">清空缓存</button>
-                    <button id="prev-chapter-btn" class="ghost-btn" type="button">上一章</button>
-                    <button id="next-chapter-btn" class="ghost-btn" type="button">下一章</button>
+                  <div class="reader-toolbar-meta">
+                    <span id="reader-toolbar-progress" class="badge">第 0 / 0 章</span>
                   </div>
                 </div>
 
