@@ -413,6 +413,12 @@ button,
   white-space: nowrap;
 }
 
+.upload-btn.is-disabled {
+  opacity: 0.65;
+  cursor: wait;
+  pointer-events: none;
+}
+
 button:hover,
 .upload-btn:hover {
   background: var(--accent-deep);

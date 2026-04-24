@@ -474,8 +474,8 @@
                     </p>
                   </div>
                   <div class="shelf-upload-actions">
-                    <button id="shelf-upload-files-trigger" class="upload-btn" type="button">选择书籍文件</button>
-                    <button id="shelf-upload-directory-trigger" class="upload-btn upload-btn-secondary" type="button">选择整个目录</button>
+                    <label id="shelf-upload-files-trigger" class="upload-btn" for="shelf-upload-file">选择书籍文件</label>
+                    <label id="shelf-upload-directory-trigger" class="upload-btn upload-btn-secondary" for="shelf-upload-directory">选择整个目录</label>
                     <button id="shelf-upload-clear-btn" class="ghost-btn" type="button">清空待上传</button>
                   </div>
                 </div>
@@ -520,7 +520,7 @@
                 <div class="shelf-upload-remote-box">
                   <code id="upload-api-endpoint">/api/library/uploads</code>
                   <div class="shelf-upload-actions">
-                    <a id="upload-portal-link" class="upload-btn" target="_blank" rel="noreferrer noopener">打开上传页</a>
+                    <a id="upload-portal-link" class="upload-btn" href="/api/library/uploads" target="_blank" rel="noreferrer noopener">打开上传页</a>
                     <button id="copy-upload-link-btn" class="ghost-btn" type="button">复制链接</button>
                   </div>
                 </div>

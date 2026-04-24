@@ -1843,8 +1843,8 @@ async function uploadBooksToShelf() {
   formData.append("import_channel", "current_device");
 
   elements.shelfUploadBtn.disabled = true;
-  elements.shelfUploadFilesTrigger.disabled = true;
-  elements.shelfUploadDirectoryTrigger.disabled = true;
+  elements.shelfUploadFilesTrigger.classList.add("is-disabled");
+  elements.shelfUploadDirectoryTrigger.classList.add("is-disabled");
   elements.shelfUploadClearBtn.disabled = true;
   setShelfUploadProgress(0, `准备上传 ${files.length} 个文件`);
   setStatus("正在导入本地书籍", "loading");
@@ -1871,8 +1871,8 @@ async function uploadBooksToShelf() {
     setStatus(error.message, "error");
   } finally {
     elements.shelfUploadBtn.disabled = false;
-    elements.shelfUploadFilesTrigger.disabled = false;
-    elements.shelfUploadDirectoryTrigger.disabled = false;
+    elements.shelfUploadFilesTrigger.classList.remove("is-disabled");
+    elements.shelfUploadDirectoryTrigger.classList.remove("is-disabled");
     elements.shelfUploadClearBtn.disabled = !state.ui.pendingUploadFiles.length;
     renderPendingUploadFiles();
   }
@@ -2318,12 +2318,6 @@ loadRecentSearches();
 renderPendingUploadFiles();
 elements.importBtn.addEventListener("click", importSources);
 elements.shelfUploadBtn.addEventListener("click", uploadBooksToShelf);
-elements.shelfUploadFilesTrigger.addEventListener("click", () => {
-  openBrowserFilePicker();
-});
-elements.shelfUploadDirectoryTrigger.addEventListener("click", () => {
-  openBrowserDirectoryPicker();
-});
 elements.shelfUploadClearBtn.addEventListener("click", () => {
   clearPendingUploadFiles();
   setStatus("已清空待上传文件", "idle");
